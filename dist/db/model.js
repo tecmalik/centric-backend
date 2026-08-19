@@ -2,310 +2,332 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createModel = exports.normalizeError = void 0;
 const supabase_1 = require("../config/supabase");
-// Lightweight Mongoose-like data layer over Supabase (PostgREST).
-// Supports the subset of the API used across the Centric MVP:
-// create / find / findOne / findById / findOneAndUpdate / findByIdAndUpdate /
-// updateMany / deleteMany, plus chained .sort() .select() .populate() and .save().
-const NEVER_UUID = '00000000-0000-0000-0000-000000000000';
-const POPULATE_TABLE = {
-    package: 'packages',
-    journey: 'journeys',
-    delivery: 'deliveries',
-    user: 'users',
-    traveler: 'users',
-    sender: 'users',
+const registry = {};
+const normalizeError = (error) => {
+    if (!error)
+        return error;
+    const wrapped = new Error(error.message || 'Database error');
+    wrapped.code = error.code;
+    wrapped.details = error.details;
+    wrapped.hint = error.hint;
+    wrapped.statusCode = 500;
+    return wrapped;
 };
-const toDb = (value) => {
+exports.normalizeError = normalizeError;
+const normalizeValue = (value) => {
     if (value instanceof Date)
         return value.toISOString();
+    if (value && typeof value === 'object' && typeof value.save === 'function')
+        return value._id;
+    if (Array.isArray(value))
+        return value.map(normalizeValue);
+    if (value && typeof value === 'object') {
+        const out = {};
+        for (const [key, nested] of Object.entries(value)) {
+            out[key] = normalizeValue(nested);
+        }
+        return out;
+    }
     return value;
 };
-const toDbValues = (doc) => {
+const columnFor = (config, field) => {
+    if (field === '_id')
+        return 'id';
+    return config.fields?.[field] ?? field;
+};
+const toDbValues = (doc, config) => {
     const out = {};
     for (const [key, value] of Object.entries(doc)) {
-        if (['_id', 'id', 'save', 'toJSON', 'then'].includes(key))
+        if (value === undefined || key === '_hidden')
             continue;
-        // Populated relation docs (attached via .populate) collapse back to their id
-        if (value && typeof value === 'object' && typeof value.save === 'function') {
-            out[key] = value._id;
-            continue;
-        }
-        out[key] = toDb(value);
+        const col = columnFor(config, key);
+        out[col] = normalizeValue(value);
     }
     return out;
 };
-const normalizeError = (error) => {
-    const err = new Error(error?.message || 'Supabase request failed');
-    err.statusCode = 400;
-    if (error?.code === '23505') {
-        err.message = 'Duplicate field value entered';
-    }
-    else if (error?.code === '42501') {
-        err.message = 'Permission denied by database policy';
-        err.statusCode = 403;
-    }
-    else if (error?.code === 'PGRST106') {
-        err.message =
-            'Supabase table does not exist. Run supabase/migrations/0001_init.sql in the Supabase SQL editor first.';
-        err.statusCode = 500;
-    }
-    else if (error?.code === 'PGRST116') {
-        err.statusCode = 404;
-    }
-    else {
-        err.statusCode = 400;
-    }
-    return err;
-};
-exports.normalizeError = normalizeError;
-const decorate = (config, row, includeHidden = false) => {
-    const doc = { ...row };
-    if (config.dates) {
-        for (const field of config.dates) {
-            if (typeof doc[field] === 'string' || doc[field] instanceof Date) {
-                doc[field] = new Date(doc[field]);
-            }
+const toDoc = (row, config) => {
+    const doc = {};
+    for (const [key, value] of Object.entries(row)) {
+        if (key === 'id') {
+            doc._id = value;
+            continue;
         }
+        doc[key] = value;
     }
-    doc.id = row.id;
-    doc._id = row.id;
-    doc.toJSON = () => {
-        const json = {};
-        for (const [key, value] of Object.entries(doc)) {
-            if (['save', 'toJSON', 'then'].includes(key))
-                continue;
-            json[key] = value;
-        }
-        return json;
-    };
-    doc.save = async () => {
-        const { error } = await supabase_1.supabase
-            .from(config.table)
-            .update(toDbValues(doc))
-            .eq('id', doc.id);
-        if (error)
-            throw (0, exports.normalizeError)(error);
-    };
-    if (config.methods) {
-        for (const [name, fn] of Object.entries(config.methods)) {
-            doc[name] = fn.bind(doc);
-        }
+    for (const field of config.dates ?? []) {
+        if (doc[field] != null)
+            doc[field] = new Date(doc[field]);
     }
-    if (config.hidden && !includeHidden) {
-        for (const field of config.hidden) {
+    const hidden = {};
+    for (const field of config.hidden ?? []) {
+        if (doc[field] !== undefined) {
+            hidden[field] = doc[field];
             delete doc[field];
         }
     }
-    return doc;
-};
-const matchesFilter = (doc, filter) => {
-    for (const [key, expected] of Object.entries(filter)) {
-        const actual = key === '_id' ? doc.id : doc[key];
-        if (expected && typeof expected === 'object' && !Array.isArray(expected) && !(expected instanceof Date)) {
-            if ('$gte' in expected && !(actual >= expected.$gte))
-                return false;
-            if ('$ne' in expected && actual === expected.$ne)
-                return false;
-            if ('$in' in expected && !expected.$in.includes(actual))
-                return false;
-        }
-        else if (actual !== expected) {
-            return false;
-        }
-    }
-    return true;
-};
-const applyPopulates = async (doc, populates) => {
-    for (const spec of populates) {
-        const table = POPULATE_TABLE[spec.path];
-        if (!table || doc[spec.path] == null)
-            continue;
-        const id = typeof doc[spec.path] === 'object' ? doc[spec.path]?.id : doc[spec.path];
-        const selectCols = spec.select
-            ? `id,${spec.select.split(/[\s,]+/).filter(Boolean).join(',')}`
-            : '*';
-        const { data, error } = await supabase_1.supabase
-            .from(table)
-            .select(selectCols)
-            .eq('id', id)
-            .maybeSingle();
+    Object.defineProperty(doc, '_hidden', {
+        value: hidden,
+        enumerable: false,
+        writable: true,
+        configurable: true,
+    });
+    doc.save = async function () {
+        this.updatedAt = new Date();
+        const values = toDbValues(this, config);
+        delete values.id;
+        const { error } = await supabase_1.supabase
+            .from(config.table)
+            .update(values)
+            .eq('id', this._id)
+            .select()
+            .single();
         if (error)
             throw (0, exports.normalizeError)(error);
-        if (data) {
-            const populated = decorate({ table, dates: ['createdAt', 'updatedAt', 'departureTime'] }, data);
-            if (spec.populate) {
-                await applyPopulates(populated, [spec.populate]);
+        return this;
+    };
+    doc.toJSON = function () {
+        return { ...this };
+    };
+    for (const [name, fn] of Object.entries(config.methods ?? {})) {
+        doc[name] = fn.bind(doc);
+    }
+    return doc;
+};
+const buildFilter = (config, filter = {}) => {
+    const clauses = [];
+    for (const [field, value] of Object.entries(filter)) {
+        const col = columnFor(config, field);
+        const isOperator = value &&
+            typeof value === 'object' &&
+            !(value instanceof Date) &&
+            !Array.isArray(value) &&
+            typeof value.save !== 'function';
+        if (isOperator) {
+            for (const [op, opValue] of Object.entries(value)) {
+                const opName = op.replace('$', '');
+                if (!['eq', 'neq', 'gte', 'lte', 'in'].includes(opName))
+                    continue;
+                clauses.push({ col, op: opName, value: normalizeValue(opValue) });
             }
-            doc[spec.path] = populated;
         }
+        else {
+            clauses.push({ col, op: 'eq', value: normalizeValue(value) });
+        }
+    }
+    return clauses;
+};
+const populateDocs = async (docs, spec, config) => {
+    const target = config.populate?.[spec.path];
+    if (!target)
+        return;
+    const targetConfig = registry[target.modelName];
+    if (!targetConfig)
+        return;
+    const ids = Array.from(new Set(docs.map((d) => d[target.key]).filter((id) => id != null)));
+    if (ids.length === 0)
+        return;
+    let columns = '*';
+    if (spec.select) {
+        const cols = ['id', ...spec.select.split(/[\s,]+/).filter(Boolean)];
+        columns = cols.join(',');
+    }
+    const { data, error } = await supabase_1.supabase.from(targetConfig.table).select(columns).in('id', ids);
+    if (error)
+        throw (0, exports.normalizeError)(error);
+    const byId = new Map((data ?? []).map((row) => [row.id, row]));
+    for (const doc of docs) {
+        const fk = doc[target.key];
+        const row = fk != null ? byId.get(fk) : undefined;
+        if (!row) {
+            doc[spec.path] = null;
+            continue;
+        }
+        const sub = toDoc(row, targetConfig);
+        if (spec.populate)
+            await populateDocs([sub], spec.populate, targetConfig);
+        doc[spec.path] = sub;
     }
 };
 class Query {
     config;
-    filter;
-    single;
-    selectFields = '*';
+    filterClauses = [];
+    orderCol;
+    orderAscending = false;
+    selectList;
     includeHidden = false;
-    orderField;
-    orderAscending = true;
-    populates = [];
-    constructor(config, filter, single) {
+    populateSpecs = [];
+    single = false;
+    constructor(config) {
         this.config = config;
-        this.filter = filter;
-        this.single = single;
     }
-    select(fields) {
-        this.selectFields = fields || '*';
-        if (fields.includes('+'))
-            this.includeHidden = true;
+    where(filter) {
+        this.filterClauses.push(...buildFilter(this.config, filter ?? {}));
         return this;
     }
     sort(spec) {
         const entry = Object.entries(spec)[0];
         if (entry) {
-            this.orderField = entry[0] === '_id' ? 'id' : entry[0];
-            this.orderAscending = entry[1] >= 0;
+            this.orderCol = columnFor(this.config, entry[0]);
+            this.orderAscending = entry[1] !== -1;
         }
         return this;
     }
-    populate(spec, fields) {
-        const pop = typeof spec === 'string'
-            ? fields
-                ? { path: spec, select: fields }
-                : { path: spec }
-            : spec;
-        this.populates.push(pop);
-        return this;
-    }
-    async run() {
-        let query = supabase_1.supabase.from(this.config.table).select(this.selectFields);
-        for (const [key, value] of Object.entries(this.filter)) {
-            const col = key === '_id' ? 'id' : key;
-            if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-                if ('$gte' in value)
-                    query = query.gte(col, toDb(value.$gte));
-                else if ('$ne' in value)
-                    query = query.neq(col, toDb(value.$ne));
-                else if ('$in' in value)
-                    query = query.in(col, value.$in);
-                else
-                    query = query.eq(col, toDb(value));
+    select(fields) {
+        const cols = [];
+        for (const field of fields.split(/[\s,]+/)) {
+            if (!field)
+                continue;
+            if (field.startsWith('+')) {
+                this.includeHidden = true;
+                cols.push(field.slice(1));
             }
             else {
-                query = query.eq(col, toDb(value));
+                cols.push(field);
             }
         }
-        if (this.orderField) {
-            query = query.order(this.orderField, { ascending: this.orderAscending });
+        this.selectList = cols;
+        return this;
+    }
+    populate(path, select) {
+        if (typeof path === 'string') {
+            this.populateSpecs.push({ path, select });
         }
-        let data;
-        if (this.single) {
-            const { data: row, error } = await query.single();
-            if (error && error.code === 'PGRST116')
-                return null;
-            if (error)
-                throw (0, exports.normalizeError)(error);
-            data = row;
+        else if (path && typeof path === 'object') {
+            this.populateSpecs.push(path);
         }
-        else {
-            const { data: rows, error } = await query;
-            if (error)
-                throw (0, exports.normalizeError)(error);
-            data = rows || [];
-        }
-        if (this.single) {
-            const doc = decorate(this.config, data, this.includeHidden);
-            await applyPopulates(doc, this.populates);
-            return doc;
-        }
-        const docs = data.map((row) => decorate(this.config, row, this.includeHidden));
-        for (const doc of docs) {
-            await applyPopulates(doc, this.populates);
-        }
-        return docs;
+        return this;
+    }
+    singleMode() {
+        this.single = true;
+        return this;
     }
     then(onfulfilled, onrejected) {
-        return this.run().then(onfulfilled, onrejected);
+        return this.exec().then(onfulfilled, onrejected);
     }
-}
-class ModelHandle {
-    config;
-    constructor(config) {
-        this.config = config;
-    }
-    async create(doc) {
-        let input = { ...doc };
-        if (this.config.beforeCreate) {
-            input = (await this.config.beforeCreate(input)) || input;
+    async exec() {
+        const { table } = this.config;
+        let columns = '*';
+        if (this.selectList) {
+            const cols = ['id', ...this.selectList];
+            if (this.includeHidden)
+                cols.push(...(this.config.hidden ?? []));
+            columns = cols.join(',');
         }
-        const now = new Date();
-        input.createdAt = input.createdAt ?? now;
-        input.updatedAt = input.updatedAt ?? now;
-        const { data, error } = await supabase_1.supabase
-            .from(this.config.table)
-            .insert(toDbValues(input))
-            .select('*')
-            .single();
+        let query = supabase_1.supabase.from(table).select(columns);
+        for (const clause of this.filterClauses) {
+            if (clause.op === 'eq')
+                query = query.eq(clause.col, clause.value);
+            else if (clause.op === 'neq')
+                query = query.neq(clause.col, clause.value);
+            else if (clause.op === 'gte')
+                query = query.gte(clause.col, clause.value);
+            else if (clause.op === 'lte')
+                query = query.lte(clause.col, clause.value);
+            else if (clause.op === 'in')
+                query = query.in(clause.col, clause.value);
+        }
+        if (this.orderCol)
+            query = query.order(this.orderCol, { ascending: this.orderAscending });
+        if (this.single)
+            query = query.limit(1).maybeSingle();
+        const { data, error } = await query;
         if (error)
             throw (0, exports.normalizeError)(error);
-        return decorate(this.config, data);
-    }
-    find(filter = {}) {
-        return new Query(this.config, filter, false);
-    }
-    findOne(filter = {}) {
-        return new Query(this.config, filter, true);
-    }
-    findById(id) {
-        return this.findOne({ id });
-    }
-    async findOneAndUpdate(filter, update, opts = {}) {
-        const existing = await this.findOne(filter).run();
-        if (existing) {
-            Object.assign(existing, update);
-            await existing.save();
-            return opts.new === false ? null : existing;
+        const rows = this.single ? (data ? [data] : []) : (data ?? []);
+        const docs = rows.map((row) => toDoc(row, this.config));
+        for (const spec of this.populateSpecs) {
+            await populateDocs(docs, spec, this.config);
         }
-        if (opts.upsert) {
-            const merged = {};
-            for (const [key, value] of Object.entries(filter)) {
-                merged[key === '_id' ? 'id' : key] = value;
+        return (this.single ? (docs[0] ?? null) : docs);
+    }
+}
+const createModel = (config) => {
+    registry[config.name] = config;
+    const model = {
+        config,
+        async create(data) {
+            if (config.beforeCreate)
+                await config.beforeCreate(data);
+            const values = toDbValues({ ...data, createdAt: new Date(), updatedAt: new Date() }, config);
+            const { data: rows, error } = await supabase_1.supabase.from(config.table).insert(values).select().single();
+            if (error)
+                throw (0, exports.normalizeError)(error);
+            return toDoc(rows, config);
+        },
+        findById(id) {
+            return new Query(config).where({ _id: id }).singleMode();
+        },
+        findOne(filter) {
+            return new Query(config).where(filter).singleMode();
+        },
+        find(filter) {
+            return new Query(config).where(filter);
+        },
+        async findOneAndUpdate(filter, update, opts = {}) {
+            const existing = await new Query(config).where(filter).singleMode().exec();
+            if (existing) {
+                const before = opts.new === false ? { ...existing } : null;
+                Object.assign(existing, update);
+                await existing.save();
+                return opts.new === false ? before : existing;
             }
-            return this.create({ ...merged, ...update });
-        }
-        return null;
-    }
-    async findByIdAndUpdate(id, update) {
-        const existing = await this.findOne({ id }).run();
-        if (!existing)
+            if (opts.upsert) {
+                return model.create({ ...filter, ...update });
+            }
             return null;
-        Object.assign(existing, update);
-        await existing.save();
-        return existing;
-    }
-    async updateMany(filter, update) {
-        const { data } = await supabase_1.supabase.from(this.config.table).select('*');
-        const rows = (data || []).filter((row) => matchesFilter(row, filter));
-        for (const row of rows) {
-            const doc = decorate(this.config, row);
-            Object.assign(doc, update);
-            await doc.save();
-        }
-    }
-    async deleteMany(filter = {}) {
-        let query = supabase_1.supabase.from(this.config.table).delete();
-        if (Object.keys(filter).length === 0) {
-            query = query.neq('id', NEVER_UUID);
-        }
-        else {
-            for (const [key, value] of Object.entries(filter)) {
-                query = query.eq(key === '_id' ? 'id' : key, toDb(value));
+        },
+        async findByIdAndUpdate(id, update) {
+            return model.findOneAndUpdate({ _id: id }, update);
+        },
+        async updateMany(filter, update) {
+            let query = supabase_1.supabase
+                .from(config.table)
+                .update(toDbValues({ ...update, updatedAt: new Date() }, config))
+                .select('id');
+            const clauses = buildFilter(config, filter);
+            for (const clause of clauses) {
+                if (clause.op === 'eq')
+                    query = query.eq(clause.col, clause.value);
+                else if (clause.op === 'neq')
+                    query = query.neq(clause.col, clause.value);
+                else if (clause.op === 'gte')
+                    query = query.gte(clause.col, clause.value);
+                else if (clause.op === 'lte')
+                    query = query.lte(clause.col, clause.value);
+                else if (clause.op === 'in')
+                    query = query.in(clause.col, clause.value);
             }
-        }
-        const { error } = await query;
-        if (error)
-            throw (0, exports.normalizeError)(error);
-    }
-}
-const createModel = (config) => new ModelHandle(config);
+            const { data, error } = await query;
+            if (error)
+                throw (0, exports.normalizeError)(error);
+            return { modifiedCount: data?.length ?? 0 };
+        },
+        async deleteMany(filter = {}) {
+            let query = supabase_1.supabase.from(config.table).delete();
+            const clauses = buildFilter(config, filter);
+            if (clauses.length === 0) {
+                query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+            }
+            else {
+                for (const clause of clauses) {
+                    if (clause.op === 'eq')
+                        query = query.eq(clause.col, clause.value);
+                    else if (clause.op === 'neq')
+                        query = query.neq(clause.col, clause.value);
+                    else if (clause.op === 'gte')
+                        query = query.gte(clause.col, clause.value);
+                    else if (clause.op === 'lte')
+                        query = query.lte(clause.col, clause.value);
+                    else if (clause.op === 'in')
+                        query = query.in(clause.col, clause.value);
+                }
+            }
+            const { error, count } = await query;
+            if (error)
+                throw (0, exports.normalizeError)(error);
+            return { deletedCount: count ?? 0 };
+        },
+    };
+    return model;
+};
 exports.createModel = createModel;

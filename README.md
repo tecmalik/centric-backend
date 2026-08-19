@@ -1,99 +1,135 @@
-# Centric Backend MVP (Hackaholics 7.0)
+# centric-backend
 
-Crowd-sourced logistics backend — connects **Senders** with verified **Travelers** who carry packages along their journeys. Built for the Hackaholics 7.0 MVP demo: clean, modular Express + TypeScript, backed by **Supabase (PostgreSQL)** instead of MongoDB.
+Centric Backend MVP for Hackaholics 7.0 — a peer-to-peer luggage delivery platform connecting senders with verified travelers. Built with **Express + TypeScript + Supabase (PostgreSQL)**.
 
-## Stack
+## Tech Stack
 
-- Node.js + Express + TypeScript
-- Supabase (PostgreSQL) — accessed through the Supabase REST API (`@supabase/supabase-js`)
-- JWT authentication (HS256, `JWT_SECRET`)
-- Zod request validation, role authorization, centralized error handling
-- Socket.IO realtime delivery events
-- Swagger UI at `/api-docs`
+- **Node.js / Express** — REST API
+- **TypeScript** — typed throughout
+- **Supabase (PostgreSQL)** — database, accessed via the Supabase REST API (`@supabase/supabase-js`)
+- **Socket.IO** — real-time delivery event updates
+- **JWT** — authentication (HS256, signed with `JWT_SECRET`)
+- **Swagger UI** — interactive API docs at `/api-docs`
+- **Zod** — request validation
+
+> **Note:** MongoDB/Mongoose was fully removed in favor of Supabase. A lightweight Mongoose-like data layer in `src/db/model.ts` provides the same `create / find / findOne / findById / findOneAndUpdate / updateMany / deleteMany / save / populate` API, so controllers and services keep the original code shape.
 
 ## Prerequisites
 
 - Node.js 18+
-- A Supabase project. The tables must exist — see [Database Setup](#database-setup).
+- A Supabase project (PostgreSQL)
 
 ## Setup
 
+### 1. Install dependencies
+
 ```bash
 npm install
-cp .env.example .env   # then fill in your Supabase URL + key
-npm run dev            # http://localhost:3000
 ```
 
-Verify:
+### 2. Configure environment
+
+Copy `.env.example` to `.env` and fill in your Supabase project credentials:
+
+```env
+PORT=3000
+NODE_ENV=development
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
+JWT_SECRET=super_secret_jwt_key_change_me_in_production
+JWT_EXPIRES_IN=30d
+```
+
+### 3. Create the database schema
+
+Open your Supabase project → **SQL Editor**, paste the contents of `supabase/migrations/0001_init.sql`, and run it. This creates all 10 tables (`users`, `traveler_profiles`, `journeys`, `packages`, `matches`, `deliveries`, `evidence`, `verifications`, `earnings`, `trust_score_logs`) with UUID primary keys, foreign keys with `ON DELETE CASCADE`, and status check constraints.
+
+### 4. Seed demo data (optional)
 
 ```bash
-npm run build   # typecheck + compile
-npm test        # integration tests (matching, delivery, OTP, trust)
-npm run seed    # demo data: sender@centric.com / traveler@centric.com (password123)
-npm run demo    # full end-to-end demo flow against the API
+npm run seed
 ```
 
-## Database Setup (Supabase)
+Creates:
 
-The backend reads/writes via the Supabase REST API using the publishable key — **no database connection string is needed at runtime**.
+- `sender@centric.com` / `password123` (SENDER)
+- `traveler@centric.com` / `password123` (TRAVELER, verified, trust score 70)
+- A Yaba → Ikeja journey and a sample medical package
 
-1. Open your project → **SQL Editor** → New query
-2. Run the contents of [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql)
-3. The 10 tables are created with RLS disabled (fine for the MVP)
+### 5. Run the server
 
-`.env`:
-
-```
-SUPABASE_URL=https://<project-ref>.supabase.co
-SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-JWT_SECRET=<any long random string>   # used to sign app JWTs
+```bash
+npm run dev        # development (ts-node-dev)
+npm run build      # compile to dist/
+npm start          # production (node dist/server.js)
 ```
 
-## MVP Demo Flow (fully automated)
+- API base: `http://localhost:3000/api/v1`
+- Swagger UI: `http://localhost:3000/api-docs`
+- Health check: `GET /health`
 
+## Verification
+
+```bash
+npm test           # integration tests against the real Supabase project (~50s, wipes all tables)
+npm run demo       # full 15-step end-to-end flow simulation
 ```
-npm run demo
-```
 
-Covers: sender registers → traveler registers → mock verification → journey (Yaba → Ikeja) → package created → matching engine ranks matches (score + detour) → traveler accepts → delivery assigned → pickup evidence → IN_TRANSIT → OUT_FOR_DELIVERY → OTP verified → COMPLETED → earnings recorded → trust score updated.
+**Important:** `npm test` and `npm run demo` wipe all rows in the 10 tables first. Re-run `npm run seed` afterwards if you want the demo data back.
 
-## API Overview (`/api/v1`)
+## API Endpoints
 
-| Module | Endpoints |
-|---|---|
-| Auth | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` |
-| Verification | `POST /verification/verify` (mock KYC) |
-| Journeys | `POST /journeys`, `GET /journeys`, `GET /journeys/all` |
-| Packages | `POST /packages` (triggers matching), `GET /packages`, `GET /packages/:id` |
-| Matching | `GET /matching/packages/:packageId` (on-demand), `GET /matches/package/:packageId`, `GET /matches/journey/:journeyId`, `POST /matches/:id/accept` |
-| Deliveries | `GET /deliveries/:id`, `POST /deliveries/:id/pickup`, `POST /deliveries/:id/transit`, `POST /deliveries/:id/out-for-delivery`, `POST /deliveries/:id/verify-otp`, `POST /deliveries/:id/cancel` |
-| Evidence | `GET /evidence/:deliveryId` |
-| Earnings | `GET /earnings` |
-| Trust | `GET /trust/history` |
-| AI | `POST /ai/classify` (rule-based fallback, Gemini optional via `GEMINI_API_KEY`) |
-
-Full interactive docs: **http://localhost:3000/api-docs**
-
-Realtime Socket.IO events: `delivery:matched`, `delivery:accepted`, `delivery:picked_up`, `delivery:in_transit`, `delivery:completed`.
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/api/v1/auth/register` | Register user (SENDER/TRAVELER) |
+| POST | `/api/v1/auth/login` | Login, returns JWT |
+| GET | `/api/v1/auth/me` | Current user + traveler profile |
+| POST | `/api/v1/verification/verify` | Mock KYC verification (+20 trust) |
+| POST | `/api/v1/journeys` | Create traveler journey |
+| GET | `/api/v1/journeys` | All journeys (with traveler info) |
+| POST | `/api/v1/packages` | Create package (auto-triggers matching) |
+| GET | `/api/v1/packages` | All packages |
+| GET | `/api/v1/packages/:id` | Package by ID |
+| GET | `/api/v1/matches/package/:packageId` | Matches for a package |
+| GET | `/api/v1/matches/journey/:journeyId` | Matches for a journey |
+| POST | `/api/v1/matches/:id/accept` | Accept match → creates delivery + OTP |
+| GET | `/api/v1/deliveries/:id` | Delivery details (populated) |
+| POST | `/api/v1/deliveries/:id/pickup` | Record pickup evidence |
+| POST | `/api/v1/deliveries/:id/transit` | Mark IN_TRANSIT |
+| POST | `/api/v1/deliveries/:id/out-for-delivery` | Mark OUT_FOR_DELIVERY |
+| POST | `/api/v1/deliveries/:id/verify-otp` | Verify OTP → COMPLETED + payout + trust |
+| DELETE | `/api/v1/deliveries/:id/cancel` | Cancel delivery |
+| GET | `/api/v1/earnings` | Traveler earnings |
+| GET | `/api/v1/trust/history` | Traveler trust score + audit log |
+| POST | `/api/v1/ai/classify` | Mock AI package classification |
 
 ## Project Structure
 
 ```
 src/
-  config/        # supabase client, socket.io, swagger
-  db/            # Supabase data layer (Mongoose-like API: create/find/save/populate)
-  middleware/    # auth (JWT), role guard, validation, error handler
-  modules/       # auth, users, verification, journeys, packages, matching,
-                 # deliveries, earnings, trust, ai, evidence
-  routes/        # /api/v1 router
-  app.ts         # express app
-  server.ts      # entrypoint
-  seed.ts        # demo data
-  demo-flow.ts   # end-to-end demo simulation
-supabase/
-  migrations/    # SQL schema (run in Supabase SQL Editor)
+├── app.ts                  # Express app, routes, Swagger, error handler
+├── server.ts               # Entry point (HTTP + Socket.IO)
+├── config/
+│   ├── db.ts               # Supabase connectivity check
+│   ├── socket.ts           # Socket.IO setup
+│   └── supabase.ts         # Supabase client (env-driven)
+├── db/
+│   └── model.ts            # Mongoose-like data layer over Supabase REST
+├── middleware/
+│   ├── auth.ts             # JWT protect + role restriction
+│   ├── error.ts            # Central error handler (incl. Postgres codes)
+│   └── validate.ts         # Zod validation
+├── modules/                # One folder per feature (controller/routes/model)
+└── seed.ts / demo-flow.ts  # Seeding + end-to-end demo
 ```
 
-## Tests
+## MVP Flow
 
-`npm test` runs against your Supabase project (the tables must exist). Tests wipe and reseed the tables, so run `npm run seed` afterwards to restore the demo data.
+1. Sender registers and creates a package (Yaba → Ikeja)
+2. Traveler registers, gets verified (+20 trust → 70)
+3. Traveler creates a journey (Yaba → Ikeja)
+4. Matching engine scores compatible journeys (route overlap, detour, capacity, trust)
+5. Traveler accepts a match → delivery created with a 6-digit OTP
+6. Traveler records pickup evidence → IN_TRANSIT → OUT_FOR_DELIVERY
+7. Recipient provides OTP → delivery COMPLETED
+8. Earnings auto-calculated (base ₦1000 + ₦100/km + ₦200/kg, 80% to traveler) and trust score +10

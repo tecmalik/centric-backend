@@ -15,20 +15,24 @@ const earning_model_1 = require("./modules/earnings/earning.model");
 const evidence_model_1 = require("./modules/evidence/evidence.model");
 const verification_model_1 = require("./modules/verification/verification.model");
 const trust_model_1 = require("./modules/trust/trust.model");
+const clearAllTables = async () => {
+    await user_model_1.User.deleteMany({});
+    await traveler_model_1.TravelerProfile.deleteMany({});
+    await journey_model_1.Journey.deleteMany({});
+    await package_model_1.Package.deleteMany({});
+    await match_model_1.Match.deleteMany({});
+    await delivery_model_1.Delivery.deleteMany({});
+    await earning_model_1.Earning.deleteMany({});
+    await evidence_model_1.Evidence.deleteMany({});
+    await verification_model_1.Verification.deleteMany({});
+    await trust_model_1.TrustScoreLog.deleteMany({});
+};
 const runDemoFlow = async () => {
     console.log('\n=== Starting Centric MVP End-to-End Demo Flow Simulation ===\n');
     try {
+        console.log('[Database] Connected to Supabase');
         // Clean tables first for a fresh demo run
-        await delivery_model_1.Delivery.deleteMany({});
-        await match_model_1.Match.deleteMany({});
-        await package_model_1.Package.deleteMany({});
-        await journey_model_1.Journey.deleteMany({});
-        await earning_model_1.Earning.deleteMany({});
-        await evidence_model_1.Evidence.deleteMany({});
-        await verification_model_1.Verification.deleteMany({});
-        await trust_model_1.TrustScoreLog.deleteMany({});
-        await traveler_model_1.TravelerProfile.deleteMany({});
-        await user_model_1.User.deleteMany({});
+        await clearAllTables();
         console.log(`[Database] Cleaned tables for fresh demo run.\n`);
         const timestamp = Date.now();
         // ----------------------------------------------------

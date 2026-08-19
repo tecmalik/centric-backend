@@ -1,20 +1,16 @@
 import { supabase } from './supabase';
 
 export const connectDB = async (): Promise<void> => {
-  const url = process.env.SUPABASE_URL || 'https://gjavcmvnrckfhxesawas.supabase.co';
-  console.log(`Connecting to Supabase at: ${url}`);
   try {
+    console.log(`Connecting to Supabase at: ${process.env.SUPABASE_URL || 'https://gjavcmvnrckfhxesawas.supabase.co'}`);
     const { error } = await supabase.from('users').select('id').limit(1);
-    if (error && error.code === 'PGRST106') {
-      console.warn(
-        '[DB WARNING] Supabase tables not found. Run supabase/migrations/0001_init.sql in the Supabase SQL editor first.'
-      );
-    } else if (error) {
-      console.warn('[DB WARNING] Supabase reachable but returned:', error.message);
-    } else {
-      console.log('Supabase connected successfully.');
+    if (error) {
+      console.error('Supabase connection warning:', error.message);
+      return;
     }
+    console.log('Supabase connected successfully.');
   } catch (error) {
     console.error('Supabase connection error:', error);
+    process.exit(1);
   }
 };

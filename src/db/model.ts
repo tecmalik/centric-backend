@@ -1,324 +1,358 @@
 import { supabase } from '../config/supabase';
 
-// Lightweight Mongoose-like data layer over Supabase (PostgREST).
-// Supports the subset of the API used across the Centric MVP:
-// create / find / findOne / findById / findOneAndUpdate / findByIdAndUpdate /
-// updateMany / deleteMany, plus chained .sort() .select() .populate() and .save().
-
-const NEVER_UUID = '00000000-0000-0000-0000-000000000000';
-
 export interface PopulateSpec {
   path: string;
   select?: string;
   populate?: PopulateSpec;
 }
 
+export interface PopulateTarget {
+  modelName: string;
+  key: string;
+}
+
 export interface ModelConfig {
+  name: string;
   table: string;
+  fields?: Record<string, string>;
   dates?: string[];
+  populate?: Record<string, PopulateTarget>;
   hidden?: string[];
-  beforeCreate?: (doc: any) => Promise<any> | any;
+  beforeCreate?: (data: Record<string, any>) => Promise<void> | void;
   methods?: Record<string, (...args: any[]) => any>;
 }
 
-export type Doc = Record<string, any>;
+export interface FilterClause {
+  col: string;
+  op: 'eq' | 'neq' | 'gte' | 'lte' | 'in';
+  value: any;
+}
 
-const POPULATE_TABLE: Record<string, string> = {
-  package: 'packages',
-  journey: 'journeys',
-  delivery: 'deliveries',
-  user: 'users',
-  traveler: 'users',
-  sender: 'users',
+const registry: Record<string, ModelConfig> = {};
+
+export const normalizeError = (error: any): Error => {
+  if (!error) return error;
+  const wrapped: any = new Error(error.message || 'Database error');
+  wrapped.code = error.code;
+  wrapped.details = error.details;
+  wrapped.hint = error.hint;
+  wrapped.statusCode = 500;
+  return wrapped;
 };
 
-const toDb = (value: any): any => {
+const normalizeValue = (value: any): any => {
   if (value instanceof Date) return value.toISOString();
+  if (value && typeof value === 'object' && typeof value.save === 'function') return value._id;
+  if (Array.isArray(value)) return value.map(normalizeValue);
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      out[key] = normalizeValue(nested);
+    }
+    return out;
+  }
   return value;
 };
 
-const toDbValues = (doc: Record<string, any>): Record<string, any> => {
+const columnFor = (config: ModelConfig, field: string): string => {
+  if (field === '_id') return 'id';
+  return config.fields?.[field] ?? field;
+};
+
+const toDbValues = (doc: Record<string, any>, config: ModelConfig): Record<string, any> => {
   const out: Record<string, any> = {};
   for (const [key, value] of Object.entries(doc)) {
-    if (['_id', 'id', 'save', 'toJSON', 'then'].includes(key)) continue;
-    // Populated relation docs (attached via .populate) collapse back to their id
-    if (value && typeof value === 'object' && typeof value.save === 'function') {
-      out[key] = value._id;
-      continue;
-    }
-    out[key] = toDb(value);
+    if (value === undefined || key === '_hidden') continue;
+    const col = columnFor(config, key);
+    out[col] = normalizeValue(value);
   }
   return out;
 };
 
-export const normalizeError = (error: any): Error => {
-  const err: any = new Error(error?.message || 'Supabase request failed');
-  err.statusCode = 400;
-  if (error?.code === '23505') {
-    err.message = 'Duplicate field value entered';
-  } else if (error?.code === '42501') {
-    err.message = 'Permission denied by database policy';
-    err.statusCode = 403;
-  } else if (error?.code === 'PGRST106') {
-    err.message =
-      'Supabase table does not exist. Run supabase/migrations/0001_init.sql in the Supabase SQL editor first.';
-    err.statusCode = 500;
-  } else if (error?.code === 'PGRST116') {
-    err.statusCode = 404;
-  } else {
-    err.statusCode = 400;
-  }
-  return err;
-};
-
-const decorate = (config: ModelConfig, row: Record<string, any>, includeHidden = false): Doc => {
-  const doc: Doc = { ...row };
-  if (config.dates) {
-    for (const field of config.dates) {
-      if (typeof doc[field] === 'string' || doc[field] instanceof Date) {
-        doc[field] = new Date(doc[field]);
-      }
+const toDoc = (row: Record<string, any>, config: ModelConfig): any => {
+  const doc: Record<string, any> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (key === 'id') {
+      doc._id = value;
+      continue;
     }
+    doc[key] = value;
   }
-  doc.id = row.id;
-  doc._id = row.id;
-  doc.toJSON = () => {
-    const json: Record<string, any> = {};
-    for (const [key, value] of Object.entries(doc)) {
-      if (['save', 'toJSON', 'then'].includes(key)) continue;
-      json[key] = value;
-    }
-    return json;
-  };
-  doc.save = async () => {
-    const { error } = await supabase
-      .from(config.table)
-      .update(toDbValues(doc))
-      .eq('id', doc.id);
-    if (error) throw normalizeError(error);
-  };
-  if (config.methods) {
-    for (const [name, fn] of Object.entries(config.methods)) {
-      doc[name] = fn.bind(doc);
-    }
+  for (const field of config.dates ?? []) {
+    if (doc[field] != null) doc[field] = new Date(doc[field]);
   }
-  if (config.hidden && !includeHidden) {
-    for (const field of config.hidden) {
+  const hidden: Record<string, any> = {};
+  for (const field of config.hidden ?? []) {
+    if (doc[field] !== undefined) {
+      hidden[field] = doc[field];
       delete doc[field];
     }
+  }
+  Object.defineProperty(doc, '_hidden', {
+    value: hidden,
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
+
+  doc.save = async function (this: any) {
+    this.updatedAt = new Date();
+    const values = toDbValues(this, config);
+    delete values.id;
+    const { error } = await supabase
+      .from(config.table)
+      .update(values)
+      .eq('id', this._id)
+      .select()
+      .single();
+    if (error) throw normalizeError(error);
+    return this;
+  };
+
+  doc.toJSON = function (this: any) {
+    return { ...this };
+  };
+
+  for (const [name, fn] of Object.entries(config.methods ?? {})) {
+    doc[name] = fn.bind(doc);
   }
   return doc;
 };
 
-const matchesFilter = (doc: Record<string, any>, filter: Record<string, any>): boolean => {
-  for (const [key, expected] of Object.entries(filter)) {
-    const actual = key === '_id' ? doc.id : doc[key];
-    if (expected && typeof expected === 'object' && !Array.isArray(expected) && !(expected instanceof Date)) {
-      if ('$gte' in expected && !(actual >= expected.$gte)) return false;
-      if ('$ne' in expected && actual === expected.$ne) return false;
-      if ('$in' in expected && !expected.$in.includes(actual)) return false;
-    } else if (actual !== expected) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const applyPopulates = async (doc: Doc, populates: PopulateSpec[]): Promise<void> => {
-  for (const spec of populates) {
-    const table = POPULATE_TABLE[spec.path];
-    if (!table || doc[spec.path] == null) continue;
-    const id = typeof doc[spec.path] === 'object' ? doc[spec.path]?.id : doc[spec.path];
-    const selectCols = spec.select
-      ? `id,${spec.select.split(/[\s,]+/).filter(Boolean).join(',')}`
-      : '*';
-    const { data, error } = await supabase
-      .from(table)
-      .select(selectCols)
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw normalizeError(error);
-    if (data) {
-      const populated = decorate({ table, dates: ['createdAt', 'updatedAt', 'departureTime'] }, data);
-      if (spec.populate) {
-        await applyPopulates(populated, [spec.populate]);
+const buildFilter = (config: ModelConfig, filter: Record<string, any> = {}): FilterClause[] => {
+  const clauses: FilterClause[] = [];
+  for (const [field, value] of Object.entries(filter)) {
+    const col = columnFor(config, field);
+    const isOperator =
+      value &&
+      typeof value === 'object' &&
+      !(value instanceof Date) &&
+      !Array.isArray(value) &&
+      typeof value.save !== 'function';
+    if (isOperator) {
+      for (const [op, opValue] of Object.entries(value)) {
+        const opName = op.replace('$', '') as FilterClause['op'];
+        if (!['eq', 'neq', 'gte', 'lte', 'in'].includes(opName)) continue;
+        clauses.push({ col, op: opName, value: normalizeValue(opValue) });
       }
-      doc[spec.path] = populated;
+    } else {
+      clauses.push({ col, op: 'eq', value: normalizeValue(value) });
     }
+  }
+  return clauses;
+};
+
+const populateDocs = async (docs: any[], spec: PopulateSpec, config: ModelConfig): Promise<void> => {
+  const target = config.populate?.[spec.path];
+  if (!target) return;
+  const targetConfig = registry[target.modelName];
+  if (!targetConfig) return;
+
+  const ids = Array.from(new Set(docs.map((d) => d[target.key]).filter((id) => id != null)));
+  if (ids.length === 0) return;
+
+  let columns = '*';
+  if (spec.select) {
+    const cols = ['id', ...spec.select.split(/[\s,]+/).filter(Boolean)];
+    columns = cols.join(',');
+  }
+
+  const { data, error } = await supabase.from(targetConfig.table).select(columns).in('id', ids);
+  if (error) throw normalizeError(error);
+
+  const byId = new Map((data ?? []).map((row: any) => [row.id, row]));
+  for (const doc of docs) {
+    const fk = doc[target.key];
+    const row = fk != null ? byId.get(fk) : undefined;
+    if (!row) {
+      doc[spec.path] = null;
+      continue;
+    }
+    const sub = toDoc(row, targetConfig);
+    if (spec.populate) await populateDocs([sub], spec.populate, targetConfig);
+    doc[spec.path] = sub;
   }
 };
 
-class Query {
-  private selectFields = '*';
+class Query<T> {
+  private filterClauses: FilterClause[] = [];
+  private orderCol?: string;
+  private orderAscending = false;
+  private selectList?: string[];
   private includeHidden = false;
-  private orderField?: string;
-  private orderAscending = true;
-  private populates: PopulateSpec[] = [];
+  private populateSpecs: PopulateSpec[] = [];
+  private single = false;
 
-  constructor(
-    private config: ModelConfig,
-    private filter: Record<string, any>,
-    private single: boolean
-  ) {}
+  constructor(private config: ModelConfig) {}
 
-  select(fields: string): this {
-    this.selectFields = fields || '*';
-    if (fields.includes('+')) this.includeHidden = true;
+  where(filter?: Record<string, any>): this {
+    this.filterClauses.push(...buildFilter(this.config, filter ?? {}));
     return this;
   }
 
   sort(spec: Record<string, 1 | -1>): this {
     const entry = Object.entries(spec)[0];
     if (entry) {
-      this.orderField = entry[0] === '_id' ? 'id' : entry[0];
-      this.orderAscending = entry[1] >= 0;
+      this.orderCol = columnFor(this.config, entry[0]);
+      this.orderAscending = entry[1] !== -1;
     }
     return this;
   }
 
-  populate(spec: PopulateSpec | string, fields?: string): this {
-    const pop: PopulateSpec =
-      typeof spec === 'string'
-        ? fields
-          ? { path: spec, select: fields }
-          : { path: spec }
-        : spec;
-    this.populates.push(pop);
-    return this as any;
-  }
-
-  async run(): Promise<any> {
-    let query = supabase.from(this.config.table).select(this.selectFields);
-    for (const [key, value] of Object.entries(this.filter)) {
-      const col = key === '_id' ? 'id' : key;
-      if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-        if ('$gte' in value) query = query.gte(col, toDb(value.$gte));
-        else if ('$ne' in value) query = query.neq(col, toDb(value.$ne));
-        else if ('$in' in value) query = query.in(col, value.$in);
-        else query = query.eq(col, toDb(value));
+  select(fields: string): this {
+    const cols: string[] = [];
+    for (const field of fields.split(/[\s,]+/)) {
+      if (!field) continue;
+      if (field.startsWith('+')) {
+        this.includeHidden = true;
+        cols.push(field.slice(1));
       } else {
-        query = query.eq(col, toDb(value));
+        cols.push(field);
       }
     }
-    if (this.orderField) {
-      query = query.order(this.orderField, { ascending: this.orderAscending });
-    }
-
-    let data: any;
-    if (this.single) {
-      const { data: row, error } = await query.single();
-      if (error && error.code === 'PGRST116') return null;
-      if (error) throw normalizeError(error);
-      data = row;
-    } else {
-      const { data: rows, error } = await query;
-      if (error) throw normalizeError(error);
-      data = rows || [];
-    }
-
-    if (this.single) {
-      const doc = decorate(this.config, data, this.includeHidden);
-      await applyPopulates(doc, this.populates);
-      return doc;
-    }
-    const docs = (data as any[]).map((row) => decorate(this.config, row, this.includeHidden));
-    for (const doc of docs) {
-      await applyPopulates(doc, this.populates);
-    }
-    return docs;
+    this.selectList = cols;
+    return this;
   }
 
-  then<TResult1 = any, TResult2 = never>(
-    onfulfilled?: (value: any) => TResult1 | PromiseLike<TResult1>,
+  populate(path: string | PopulateSpec, select?: string): this {
+    if (typeof path === 'string') {
+      this.populateSpecs.push({ path, select });
+    } else if (path && typeof path === 'object') {
+      this.populateSpecs.push(path);
+    }
+    return this;
+  }
+
+  singleMode(): this {
+    this.single = true;
+    return this;
+  }
+
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: (value: T) => TResult1 | PromiseLike<TResult1>,
     onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>
   ): Promise<TResult1 | TResult2> {
-    return this.run().then(onfulfilled, onrejected);
+    return this.exec().then(onfulfilled, onrejected);
+  }
+
+  async exec(): Promise<T> {
+    const { table } = this.config;
+
+    let columns = '*';
+    if (this.selectList) {
+      const cols = ['id', ...this.selectList];
+      if (this.includeHidden) cols.push(...(this.config.hidden ?? []));
+      columns = cols.join(',');
+    }
+
+    let query: any = supabase.from(table).select(columns);
+    for (const clause of this.filterClauses) {
+      if (clause.op === 'eq') query = query.eq(clause.col, clause.value);
+      else if (clause.op === 'neq') query = query.neq(clause.col, clause.value);
+      else if (clause.op === 'gte') query = query.gte(clause.col, clause.value);
+      else if (clause.op === 'lte') query = query.lte(clause.col, clause.value);
+      else if (clause.op === 'in') query = query.in(clause.col, clause.value);
+    }
+    if (this.orderCol) query = query.order(this.orderCol, { ascending: this.orderAscending });
+    if (this.single) query = query.limit(1).maybeSingle();
+
+    const { data, error } = await query;
+    if (error) throw normalizeError(error);
+
+    const rows = this.single ? (data ? [data] : []) : (data ?? []);
+    const docs = rows.map((row: any) => toDoc(row, this.config));
+    for (const spec of this.populateSpecs) {
+      await populateDocs(docs, spec, this.config);
+    }
+    return (this.single ? (docs[0] ?? null) : docs) as T;
   }
 }
 
-class ModelHandle {
-  constructor(private config: ModelConfig) {}
+export const createModel = <T extends { _id: string; save(): Promise<any>; toJSON(): any }>(config: ModelConfig) => {
+  registry[config.name] = config;
 
-  async create(doc: Record<string, any>): Promise<Doc> {
-    let input = { ...doc };
-    if (this.config.beforeCreate) {
-      input = (await this.config.beforeCreate(input)) || input;
-    }
-    const now = new Date();
-    input.createdAt = input.createdAt ?? now;
-    input.updatedAt = input.updatedAt ?? now;
-    const { data, error } = await supabase
-      .from(this.config.table)
-      .insert(toDbValues(input))
-      .select('*')
-      .single();
-    if (error) throw normalizeError(error);
-    return decorate(this.config, data);
-  }
+  const model = {
+    config,
 
-  find(filter: Record<string, any> = {}): Query {
-    return new Query(this.config, filter, false);
-  }
+    async create(data: Record<string, any>): Promise<T> {
+      if (config.beforeCreate) await config.beforeCreate(data);
+      const values = toDbValues({ ...data, createdAt: new Date(), updatedAt: new Date() }, config);
+      const { data: rows, error } = await supabase.from(config.table).insert(values).select().single();
+      if (error) throw normalizeError(error);
+      return toDoc(rows, config);
+    },
 
-  findOne(filter: Record<string, any> = {}): Query {
-    return new Query(this.config, filter, true);
-  }
+    findById(id: string) {
+      return new Query<T | null>(config).where({ _id: id }).singleMode();
+    },
 
-  findById(id: string): Query {
-    return this.findOne({ id });
-  }
+    findOne(filter?: Record<string, any>) {
+      return new Query<T | null>(config).where(filter).singleMode();
+    },
 
-  async findOneAndUpdate(
-    filter: Record<string, any>,
-    update: Record<string, any>,
-    opts: { new?: boolean; upsert?: boolean } = {}
-  ): Promise<Doc | null> {
-    const existing = await this.findOne(filter).run();
-    if (existing) {
-      Object.assign(existing, update);
-      await existing.save();
-      return opts.new === false ? null : existing;
-    }
-    if (opts.upsert) {
-      const merged: Record<string, any> = {};
-      for (const [key, value] of Object.entries(filter)) {
-        merged[key === '_id' ? 'id' : key] = value;
+    find(filter?: Record<string, any>) {
+      return new Query<T[]>(config).where(filter);
+    },
+
+    async findOneAndUpdate(
+      filter: Record<string, any>,
+      update: Record<string, any>,
+      opts: { upsert?: boolean; new?: boolean } = {}
+    ): Promise<T | null> {
+      const existing = await new Query<T | null>(config).where(filter).singleMode().exec();
+      if (existing) {
+        const before = opts.new === false ? ({ ...existing } as T) : null;
+        Object.assign(existing, update);
+        await existing.save();
+        return opts.new === false ? before : existing;
       }
-      return this.create({ ...merged, ...update });
-    }
-    return null;
-  }
-
-  async findByIdAndUpdate(id: string, update: Record<string, any>): Promise<Doc | null> {
-    const existing = await this.findOne({ id }).run();
-    if (!existing) return null;
-    Object.assign(existing, update);
-    await existing.save();
-    return existing;
-  }
-
-  async updateMany(filter: Record<string, any>, update: Record<string, any>): Promise<void> {
-    const { data } = await supabase.from(this.config.table).select('*');
-    const rows = (data || []).filter((row: any) => matchesFilter(row, filter));
-    for (const row of rows) {
-      const doc = decorate(this.config, row);
-      Object.assign(doc, update);
-      await doc.save();
-    }
-  }
-
-  async deleteMany(filter: Record<string, any> = {}): Promise<void> {
-    let query = supabase.from(this.config.table).delete();
-    if (Object.keys(filter).length === 0) {
-      query = query.neq('id', NEVER_UUID);
-    } else {
-      for (const [key, value] of Object.entries(filter)) {
-        query = query.eq(key === '_id' ? 'id' : key, toDb(value));
+      if (opts.upsert) {
+        return model.create({ ...filter, ...update });
       }
-    }
-    const { error } = await query;
-    if (error) throw normalizeError(error);
-  }
-}
+      return null;
+    },
 
-export const createModel = (config: ModelConfig): ModelHandle => new ModelHandle(config);
+    async findByIdAndUpdate(id: string, update: Record<string, any>): Promise<T | null> {
+      return model.findOneAndUpdate({ _id: id }, update);
+    },
+
+    async updateMany(filter: Record<string, any>, update: Record<string, any>): Promise<{ modifiedCount: number }> {
+      let query: any = supabase
+        .from(config.table)
+        .update(toDbValues({ ...update, updatedAt: new Date() }, config))
+        .select('id');
+      const clauses = buildFilter(config, filter);
+      for (const clause of clauses) {
+        if (clause.op === 'eq') query = query.eq(clause.col, clause.value);
+        else if (clause.op === 'neq') query = query.neq(clause.col, clause.value);
+        else if (clause.op === 'gte') query = query.gte(clause.col, clause.value);
+        else if (clause.op === 'lte') query = query.lte(clause.col, clause.value);
+        else if (clause.op === 'in') query = query.in(clause.col, clause.value);
+      }
+      const { data, error } = await query;
+      if (error) throw normalizeError(error);
+      return { modifiedCount: data?.length ?? 0 };
+    },
+
+    async deleteMany(filter: Record<string, any> = {}): Promise<{ deletedCount: number }> {
+      let query: any = supabase.from(config.table).delete();
+      const clauses = buildFilter(config, filter);
+      if (clauses.length === 0) {
+        query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+      } else {
+        for (const clause of clauses) {
+          if (clause.op === 'eq') query = query.eq(clause.col, clause.value);
+          else if (clause.op === 'neq') query = query.neq(clause.col, clause.value);
+          else if (clause.op === 'gte') query = query.gte(clause.col, clause.value);
+          else if (clause.op === 'lte') query = query.lte(clause.col, clause.value);
+          else if (clause.op === 'in') query = query.in(clause.col, clause.value);
+        }
+      }
+      const { error, count } = await query;
+      if (error) throw normalizeError(error);
+      return { deletedCount: count ?? 0 };
+    },
+  };
+
+  return model;
+};

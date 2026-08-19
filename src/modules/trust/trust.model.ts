@@ -1,15 +1,22 @@
 import { createModel } from '../../db/model';
 
 export interface ITrustScoreLog {
-  traveler: string; // References the User (with TRAVELER role)
-  score: number; // The new score value
-  delta: number; // The change in score (e.g. +10, -15)
-  reason: string; // The reason for the change
+  _id: string;
+  traveler: string;
+  score: number;
+  delta: number;
+  reason: string;
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-export const TrustScoreLog = createModel({
+export const TrustScoreLog = createModel<ITrustScoreLog>({
+  name: 'TrustScoreLog',
   table: 'trust_score_logs',
   dates: ['createdAt', 'updatedAt'],
+  populate: {
+    traveler: { modelName: 'User', key: 'traveler' },
+  },
 });

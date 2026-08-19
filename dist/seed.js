@@ -17,7 +17,8 @@ const verification_model_1 = require("./modules/verification/verification.model"
 const trust_model_1 = require("./modules/trust/trust.model");
 const seedDatabase = async () => {
     try {
-        console.log('Clearing database tables...');
+        console.log('Connecting to Supabase for seeding...');
+        console.log('Clearing database table data...');
         await user_model_1.User.deleteMany({});
         await traveler_model_1.TravelerProfile.deleteMany({});
         await journey_model_1.Journey.deleteMany({});

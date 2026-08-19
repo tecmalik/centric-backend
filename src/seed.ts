@@ -14,7 +14,9 @@ import { TrustScoreLog } from './modules/trust/trust.model';
 
 const seedDatabase = async () => {
   try {
-    console.log('Clearing database tables...');
+    console.log('Connecting to Supabase for seeding...');
+
+    console.log('Clearing database table data...');
     await User.deleteMany({});
     await TravelerProfile.deleteMany({});
     await Journey.deleteMany({});

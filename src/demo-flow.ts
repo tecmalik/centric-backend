@@ -11,21 +11,27 @@ import { Evidence } from './modules/evidence/evidence.model';
 import { Verification } from './modules/verification/verification.model';
 import { TrustScoreLog } from './modules/trust/trust.model';
 
+const clearAllTables = async () => {
+  await User.deleteMany({});
+  await TravelerProfile.deleteMany({});
+  await Journey.deleteMany({});
+  await Package.deleteMany({});
+  await Match.deleteMany({});
+  await Delivery.deleteMany({});
+  await Earning.deleteMany({});
+  await Evidence.deleteMany({});
+  await Verification.deleteMany({});
+  await TrustScoreLog.deleteMany({});
+};
+
 const runDemoFlow = async () => {
   console.log('\n=== Starting Centric MVP End-to-End Demo Flow Simulation ===\n');
 
   try {
+    console.log('[Database] Connected to Supabase');
+
     // Clean tables first for a fresh demo run
-    await Delivery.deleteMany({});
-    await Match.deleteMany({});
-    await Package.deleteMany({});
-    await Journey.deleteMany({});
-    await Earning.deleteMany({});
-    await Evidence.deleteMany({});
-    await Verification.deleteMany({});
-    await TrustScoreLog.deleteMany({});
-    await TravelerProfile.deleteMany({});
-    await User.deleteMany({});
+    await clearAllTables();
     console.log(`[Database] Cleaned tables for fresh demo run.\n`);
 
     const timestamp = Date.now();
@@ -276,7 +282,6 @@ const runDemoFlow = async () => {
     console.log('\n============================================================');
     console.log('🎉 DEMO SIMULATION SUCCESS: ALL STEPS EXECUTED CORRECTLY! 🎉');
     console.log('============================================================\n');
-
   } catch (error: any) {
     console.error('\n❌ DEMO SIMULATION FAILED AT STEP:');
     console.error(error.message || error);

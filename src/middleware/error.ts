@@ -19,8 +19,8 @@ export const errorHandler = (
     console.error(`[Error Details]`, err.errors);
   }
 
-  // Handle Postgres/PostgREST errors surfaced through the data layer
-  if (err.statusCode === 400 && (err.message === 'Duplicate field value entered')) {
+  // Handle Postgres/Supabase unique constraint violation
+  if ((err as any).code === '23505') {
     return res.status(400).json({
       success: false,
       message: 'Duplicate field value entered',
@@ -28,7 +28,16 @@ export const errorHandler = (
     });
   }
 
-  // Handle Zod or Mongoose validation errors
+  // Handle Postgres/Supabase permission errors
+  if ((err as any).code === '42501' || (err as any).code === 'PGRST106') {
+    return res.status(500).json({
+      success: false,
+      message: 'Database configuration error',
+      error: err.message,
+    });
+  }
+
+  // Handle Zod validation errors
   if (err.name === 'ValidationError' || err.message.includes('validation failed')) {
     return res.status(400).json({
       success: false,

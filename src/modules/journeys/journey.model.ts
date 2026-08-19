@@ -1,23 +1,30 @@
 import { createModel } from '../../db/model';
 
 export interface IJourney {
+  _id: string;
   user: string;
   origin: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   destination: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   departureTime: Date;
-  availableCapacity: number; // in kg
+  availableCapacity: number;
   status: 'CREATED' | 'MATCHED' | 'COMPLETED' | 'CANCELLED';
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-export const Journey = createModel({
+export const Journey = createModel<IJourney>({
+  name: 'Journey',
   table: 'journeys',
-  dates: ['departureTime', 'createdAt', 'updatedAt'],
+  dates: ['createdAt', 'updatedAt', 'departureTime'],
+  populate: {
+    user: { modelName: 'User', key: 'user' },
+  },
 });

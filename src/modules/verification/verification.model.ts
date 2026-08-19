@@ -1,6 +1,7 @@
 import { createModel } from '../../db/model';
 
 export interface IVerification {
+  _id: string;
   user: string;
   status: 'PENDING' | 'VERIFIED' | 'REJECTED';
   documentType: string;
@@ -8,9 +9,15 @@ export interface IVerification {
   verifiedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-export const Verification = createModel({
+export const Verification = createModel<IVerification>({
+  name: 'Verification',
   table: 'verifications',
-  dates: ['verifiedAt', 'createdAt', 'updatedAt'],
+  dates: ['createdAt', 'updatedAt', 'verifiedAt'],
+  populate: {
+    user: { modelName: 'User', key: 'user' },
+  },
 });

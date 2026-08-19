@@ -10,31 +10,31 @@ import { TrustScoreLog } from '../modules/trust/trust.model';
 import { Evidence } from '../modules/evidence/evidence.model';
 import { findMatchesForPackage, calculateDistance } from '../modules/matching/matching.service';
 
+const clearAllTables = async () => {
+  await User.deleteMany({});
+  await TravelerProfile.deleteMany({});
+  await Journey.deleteMany({});
+  await Package.deleteMany({});
+  await Match.deleteMany({});
+  await Delivery.deleteMany({});
+  await Earning.deleteMany({});
+  await Verification.deleteMany({});
+  await TrustScoreLog.deleteMany({});
+};
+
 describe('Centric Backend MVP Integration Tests', () => {
   let senderId: string;
   let travelerId: string;
   let verifiedTravelerId: string;
 
-  const clearAll = async () => {
-    await User.deleteMany({});
-    await TravelerProfile.deleteMany({});
-    await Journey.deleteMany({});
-    await Package.deleteMany({});
-    await Match.deleteMany({});
-    await Delivery.deleteMany({});
-    await Earning.deleteMany({});
-    await Verification.deleteMany({});
-    await TrustScoreLog.deleteMany({});
-    await Evidence.deleteMany({});
-  };
-
   afterAll(async () => {
-    await clearAll();
+    // Clear all test data
+    await clearAllTables();
   });
 
   beforeEach(async () => {
-    // Clear tables before each test to keep them isolated
-    await clearAll();
+    // Clear databases before each test to keep them isolated
+    await clearAllTables();
 
     // Seed test users
     const sender = await User.create({
@@ -322,7 +322,7 @@ describe('Centric Backend MVP Integration Tests', () => {
       // 7. Calculate and assert traveler earnings
       // Base: 1000, Distance: ~10.7km * 100 = 1070, Weight: 1 * 200 = 200. Total = 2270 NGN.
       // Payout (80%) = 1816 NGN
-      const pricingAmount = 1000 + 10.7 * 100 + 1 * 200;
+      const pricingAmount = 1000 + (10.7 * 100) + (1 * 200);
       const platformFee = pricingAmount * 0.2;
       const payoutAmount = pricingAmount * 0.8;
 

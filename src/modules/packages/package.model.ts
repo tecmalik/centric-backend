@@ -1,19 +1,20 @@
 import { createModel } from '../../db/model';
 
 export interface IPackage {
-  user: string; // Sender
+  _id: string;
+  user: string;
   pickupLocation: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   destination: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   description: string;
   category: string;
-  weight: number; // in kg
-  declaredValue: number; // in NGN
+  weight: number;
+  declaredValue: number;
   recipient: {
     name: string;
     phone: string;
@@ -30,9 +31,15 @@ export interface IPackage {
     | 'CANCELLED';
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-export const Package = createModel({
+export const Package = createModel<IPackage>({
+  name: 'Package',
   table: 'packages',
   dates: ['createdAt', 'updatedAt'],
+  populate: {
+    user: { modelName: 'User', key: 'user' },
+  },
 });

@@ -1,16 +1,24 @@
 import { createModel } from '../../db/model';
 
 export interface IMatch {
-  package: string;
-  journey: string;
+  _id: string;
+  package: any;
+  journey: any;
   matchScore: number;
-  estimatedDetour: number; // Detour distance in km
+  estimatedDetour: number;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-export const Match = createModel({
+export const Match = createModel<IMatch>({
+  name: 'Match',
   table: 'matches',
   dates: ['createdAt', 'updatedAt'],
+  populate: {
+    package: { modelName: 'Package', key: 'package' },
+    journey: { modelName: 'Journey', key: 'journey' },
+  },
 });
