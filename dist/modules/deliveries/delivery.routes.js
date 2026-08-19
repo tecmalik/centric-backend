@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const delivery_controller_1 = require("./delivery.controller");
+const delivery_validation_1 = require("./delivery.validation");
+const validate_1 = require("../../middleware/validate");
+const auth_1 = require("../../middleware/auth");
+const router = (0, express_1.Router)();
+router.get('/:id', auth_1.protect, delivery_controller_1.getDeliveryById);
+router.post('/:id/pickup', auth_1.protect, (0, auth_1.restrictTo)('TRAVELER'), (0, validate_1.validate)(delivery_validation_1.pickupEvidenceSchema), delivery_controller_1.recordPickup);
+router.post('/:id/transit', auth_1.protect, (0, auth_1.restrictTo)('TRAVELER'), delivery_controller_1.startTransit);
+router.post('/:id/out-for-delivery', auth_1.protect, (0, auth_1.restrictTo)('TRAVELER'), delivery_controller_1.markOutForDelivery);
+router.post('/:id/verify-otp', auth_1.protect, (0, auth_1.restrictTo)('TRAVELER'), (0, validate_1.validate)(delivery_validation_1.verifyOtpSchema), delivery_controller_1.verifyOtp);
+router.post('/:id/cancel', auth_1.protect, delivery_controller_1.cancelDelivery);
+exports.default = router;

@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const package_controller_1 = require("./package.controller");
+const package_validation_1 = require("./package.validation");
+const validate_1 = require("../../middleware/validate");
+const auth_1 = require("../../middleware/auth");
+const router = (0, express_1.Router)();
+router.post('/', auth_1.protect, (0, auth_1.restrictTo)('SENDER'), (0, validate_1.validate)(package_validation_1.createPackageSchema), package_controller_1.createPackage);
+router.get('/', auth_1.protect, package_controller_1.getAllPackages);
+router.get('/mine', auth_1.protect, (0, auth_1.restrictTo)('SENDER'), package_controller_1.getMyPackages);
+router.get('/:id', auth_1.protect, package_controller_1.getPackageById);
+exports.default = router;

@@ -19,7 +19,7 @@ export const getTravelerEarnings = async (req: Request, res: Response, next: Nex
 
     const earnings = await Earning.find({ traveler: req.user._id }).sort({ createdAt: -1 });
 
-    const totalPayout = earnings.reduce((acc, curr) => acc + curr.payoutAmount, 0);
+    const totalPayout = (earnings as any[]).reduce((acc: number, curr: any) => acc + curr.payoutAmount, 0);
 
     const travelerProfile = await TravelerProfile.findOne({ user: req.user._id });
     const completedCount = travelerProfile ? travelerProfile.completedDeliveries : earnings.length;
