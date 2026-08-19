@@ -1,47 +1,24 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface IMatch extends Document {
-  package: Types.ObjectId;
-  journey: Types.ObjectId;
+export interface IMatch {
+  _id: string;
+  package: any;
+  journey: any;
   matchScore: number;
-  estimatedDetour: number; // Detour distance in km
+  estimatedDetour: number;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-const matchSchema = new Schema<IMatch>(
-  {
-    package: {
-      type: Schema.Types.ObjectId,
-      ref: 'Package',
-      required: true,
-    },
-    journey: {
-      type: Schema.Types.ObjectId,
-      ref: 'Journey',
-      required: true,
-    },
-    matchScore: {
-      type: Number,
-      required: true,
-    },
-    estimatedDetour: {
-      type: Number,
-      required: true,
-    },
-    status: {
-      type: String,
-      enum: ['PENDING', 'ACCEPTED', 'REJECTED', 'EXPIRED'],
-      default: 'PENDING',
-    },
+export const Match = createModel<IMatch>({
+  name: 'Match',
+  table: 'matches',
+  dates: ['createdAt', 'updatedAt'],
+  populate: {
+    package: { modelName: 'Package', key: 'package' },
+    journey: { modelName: 'Journey', key: 'journey' },
   },
-  {
-    timestamps: true,
-  }
-);
-
-// Compounded index to make sure matches are queried efficiently and uniquely per package/journey
-matchSchema.index({ package: 1, journey: 1 }, { unique: true });
-
-export const Match = model<IMatch>('Match', matchSchema);
+});

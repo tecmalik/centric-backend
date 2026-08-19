@@ -1,19 +1,20 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface IPackage extends Document {
-  user: Types.ObjectId; // Sender
+export interface IPackage {
+  _id: string;
+  user: string;
   pickupLocation: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   destination: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   description: string;
   category: string;
-  weight: number; // in kg
-  declaredValue: number; // in NGN
+  weight: number;
+  declaredValue: number;
   recipient: {
     name: string;
     phone: string;
@@ -30,73 +31,15 @@ export interface IPackage extends Document {
     | 'CANCELLED';
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-const packageSchema = new Schema<IPackage>(
-  {
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    pickupLocation: {
-      name: { type: String, required: true },
-      coordinates: {
-        type: [Number], // [lng, lat]
-        required: true,
-      },
-    },
-    destination: {
-      name: { type: String, required: true },
-      coordinates: {
-        type: [Number], // [lng, lat]
-        required: true,
-      },
-    },
-    description: {
-      type: String,
-      required: true,
-    },
-    category: {
-      type: String,
-      required: true,
-    },
-    weight: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    declaredValue: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    recipient: {
-      name: { type: String, required: true },
-      phone: { type: String, required: true },
-    },
-    status: {
-      type: String,
-      enum: [
-        'CREATED',
-        'MATCHED',
-        'ACCEPTED',
-        'PICKED_UP',
-        'IN_TRANSIT',
-        'OUT_FOR_DELIVERY',
-        'DELIVERED',
-        'COMPLETED',
-        'CANCELLED',
-      ],
-      default: 'CREATED',
-    },
+export const Package = createModel<IPackage>({
+  name: 'Package',
+  table: 'packages',
+  dates: ['createdAt', 'updatedAt'],
+  populate: {
+    user: { modelName: 'User', key: 'user' },
   },
-  {
-    timestamps: true,
-  }
-);
-
-packageSchema.index({ 'pickupLocation.coordinates': '2dsphere' });
-packageSchema.index({ 'destination.coordinates': '2dsphere' });
-
-export const Package = model<IPackage>('Package', packageSchema);
+});

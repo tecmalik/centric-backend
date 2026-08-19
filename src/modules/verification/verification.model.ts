@@ -1,43 +1,23 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface IVerification extends Document {
-  user: Types.ObjectId;
+export interface IVerification {
+  _id: string;
+  user: string;
   status: 'PENDING' | 'VERIFIED' | 'REJECTED';
   documentType: string;
   documentNumber: string;
   verifiedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-const verificationSchema = new Schema<IVerification>(
-  {
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      unique: true,
-    },
-    status: {
-      type: String,
-      enum: ['PENDING', 'VERIFIED', 'REJECTED'],
-      default: 'PENDING',
-    },
-    documentType: {
-      type: String,
-      required: true,
-    },
-    documentNumber: {
-      type: String,
-      required: true,
-    },
-    verifiedAt: {
-      type: Date,
-    },
+export const Verification = createModel<IVerification>({
+  name: 'Verification',
+  table: 'verifications',
+  dates: ['createdAt', 'updatedAt', 'verifiedAt'],
+  populate: {
+    user: { modelName: 'User', key: 'user' },
   },
-  {
-    timestamps: true,
-  }
-);
-
-export const Verification = model<IVerification>('Verification', verificationSchema);
+});

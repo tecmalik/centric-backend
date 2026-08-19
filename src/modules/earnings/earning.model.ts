@@ -1,52 +1,25 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface IEarning extends Document {
-  traveler: Types.ObjectId;
-  delivery: Types.ObjectId;
-  amount: number; // total package value / cost
-  platformFee: number; // 20%
-  payoutAmount: number; // 80% to traveler
+export interface IEarning {
+  _id: string;
+  traveler: string;
+  delivery: string;
+  amount: number;
+  platformFee: number;
+  payoutAmount: number;
   status: 'PENDING' | 'PAID';
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-const earningSchema = new Schema<IEarning>(
-  {
-    traveler: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    delivery: {
-      type: Schema.Types.ObjectId,
-      ref: 'Delivery',
-      required: true,
-    },
-    amount: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    platformFee: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    payoutAmount: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    status: {
-      type: String,
-      enum: ['PENDING', 'PAID'],
-      default: 'PENDING',
-    },
+export const Earning = createModel<IEarning>({
+  name: 'Earning',
+  table: 'earnings',
+  dates: ['createdAt', 'updatedAt'],
+  populate: {
+    traveler: { modelName: 'User', key: 'traveler' },
+    delivery: { modelName: 'Delivery', key: 'delivery' },
   },
-  {
-    timestamps: true,
-  }
-);
-
-export const Earning = model<IEarning>('Earning', earningSchema);
+});

@@ -1,39 +1,22 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface ITrustScoreLog extends Document {
-  traveler: Types.ObjectId; // References the User (with TRAVELER role)
-  score: number; // The new score value
-  delta: number; // The change in score (e.g. +10, -15)
-  reason: string; // The reason for the change
+export interface ITrustScoreLog {
+  _id: string;
+  traveler: string;
+  score: number;
+  delta: number;
+  reason: string;
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-const trustScoreSchema = new Schema<ITrustScoreLog>(
-  {
-    traveler: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    score: {
-      type: Number,
-      required: true,
-      min: 0,
-      max: 100,
-    },
-    delta: {
-      type: Number,
-      required: true,
-    },
-    reason: {
-      type: String,
-      required: true,
-    },
+export const TrustScoreLog = createModel<ITrustScoreLog>({
+  name: 'TrustScoreLog',
+  table: 'trust_score_logs',
+  dates: ['createdAt', 'updatedAt'],
+  populate: {
+    traveler: { modelName: 'User', key: 'traveler' },
   },
-  {
-    timestamps: true,
-  }
-);
-
-export const TrustScoreLog = model<ITrustScoreLog>('TrustScoreLog', trustScoreSchema);
+});

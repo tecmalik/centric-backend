@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import { User } from '../modules/users/user.model';
 import { TravelerProfile } from '../modules/users/traveler.model';
 import { Journey } from '../modules/journeys/journey.model';
@@ -11,43 +10,31 @@ import { TrustScoreLog } from '../modules/trust/trust.model';
 import { Evidence } from '../modules/evidence/evidence.model';
 import { findMatchesForPackage, calculateDistance } from '../modules/matching/matching.service';
 
-const TEST_MONGO_URI = 'mongodb://127.0.0.1:27017/centric_test';
+const clearAllTables = async () => {
+  await User.deleteMany({});
+  await TravelerProfile.deleteMany({});
+  await Journey.deleteMany({});
+  await Package.deleteMany({});
+  await Match.deleteMany({});
+  await Delivery.deleteMany({});
+  await Earning.deleteMany({});
+  await Verification.deleteMany({});
+  await TrustScoreLog.deleteMany({});
+};
 
 describe('Centric Backend MVP Integration Tests', () => {
-  let senderId: mongoose.Types.ObjectId;
-  let travelerId: mongoose.Types.ObjectId;
-  let verifiedTravelerId: mongoose.Types.ObjectId;
-
-  beforeAll(async () => {
-    // Connect to test database
-    await mongoose.connect(TEST_MONGO_URI);
-  });
+  let senderId: string;
+  let travelerId: string;
+  let verifiedTravelerId: string;
 
   afterAll(async () => {
-    // Clear all test data and close connection
-    await User.deleteMany({});
-    await TravelerProfile.deleteMany({});
-    await Journey.deleteMany({});
-    await Package.deleteMany({});
-    await Match.deleteMany({});
-    await Delivery.deleteMany({});
-    await Earning.deleteMany({});
-    await Verification.deleteMany({});
-    await TrustScoreLog.deleteMany({});
-    await mongoose.connection.close();
+    // Clear all test data
+    await clearAllTables();
   });
 
   beforeEach(async () => {
     // Clear databases before each test to keep them isolated
-    await User.deleteMany({});
-    await TravelerProfile.deleteMany({});
-    await Journey.deleteMany({});
-    await Package.deleteMany({});
-    await Match.deleteMany({});
-    await Delivery.deleteMany({});
-    await Earning.deleteMany({});
-    await Verification.deleteMany({});
-    await TrustScoreLog.deleteMany({});
+    await clearAllTables();
 
     // Seed test users
     const sender = await User.create({
@@ -57,7 +44,7 @@ describe('Centric Backend MVP Integration Tests', () => {
       role: 'SENDER',
       phone: '+2348011111111',
     });
-    senderId = sender._id as mongoose.Types.ObjectId;
+    senderId = sender._id;
 
     const traveler = await User.create({
       name: 'Test Traveler',
@@ -66,7 +53,7 @@ describe('Centric Backend MVP Integration Tests', () => {
       role: 'TRAVELER',
       phone: '+2348022222222',
     });
-    travelerId = traveler._id as mongoose.Types.ObjectId;
+    travelerId = traveler._id;
 
     await TravelerProfile.create({
       user: travelerId,
@@ -82,7 +69,7 @@ describe('Centric Backend MVP Integration Tests', () => {
       role: 'TRAVELER',
       phone: '+2348033333333',
     });
-    verifiedTravelerId = verifiedTraveler._id as mongoose.Types.ObjectId;
+    verifiedTravelerId = verifiedTraveler._id;
 
     await TravelerProfile.create({
       user: verifiedTravelerId,

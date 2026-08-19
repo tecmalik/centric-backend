@@ -1,65 +1,30 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface IJourney extends Document {
-  user: Types.ObjectId;
+export interface IJourney {
+  _id: string;
+  user: string;
   origin: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   destination: {
     name: string;
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   departureTime: Date;
-  availableCapacity: number; // in kg
+  availableCapacity: number;
   status: 'CREATED' | 'MATCHED' | 'COMPLETED' | 'CANCELLED';
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-const journeySchema = new Schema<IJourney>(
-  {
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    origin: {
-      name: { type: String, required: true },
-      coordinates: {
-        type: [Number], // [lng, lat]
-        required: true,
-      },
-    },
-    destination: {
-      name: { type: String, required: true },
-      coordinates: {
-        type: [Number], // [lng, lat]
-        required: true,
-      },
-    },
-    departureTime: {
-      type: Date,
-      required: true,
-    },
-    availableCapacity: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    status: {
-      type: String,
-      enum: ['CREATED', 'MATCHED', 'COMPLETED', 'CANCELLED'],
-      default: 'CREATED',
-    },
+export const Journey = createModel<IJourney>({
+  name: 'Journey',
+  table: 'journeys',
+  dates: ['createdAt', 'updatedAt', 'departureTime'],
+  populate: {
+    user: { modelName: 'User', key: 'user' },
   },
-  {
-    timestamps: true,
-  }
-);
-
-// Geo index for proximity matching
-journeySchema.index({ 'origin.coordinates': '2dsphere' });
-journeySchema.index({ 'destination.coordinates': '2dsphere' });
-
-export const Journey = model<IJourney>('Journey', journeySchema);
+});

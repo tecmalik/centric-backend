@@ -1,45 +1,25 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface IEvidence extends Document {
-  delivery: Types.ObjectId;
+export interface IEvidence {
+  _id: string;
+  delivery: string;
   photoUrl: string;
   timestamp: Date;
   gps: {
-    coordinates: [number, number]; // [lng, lat]
+    coordinates: [number, number];
   };
   note?: string;
   createdAt: Date;
   updatedAt: Date;
+  save(): Promise<any>;
+  toJSON(): any;
 }
 
-const evidenceSchema = new Schema<IEvidence>(
-  {
-    delivery: {
-      type: Schema.Types.ObjectId,
-      ref: 'Delivery',
-      required: true,
-    },
-    photoUrl: {
-      type: String,
-      required: true,
-    },
-    timestamp: {
-      type: Date,
-      default: Date.now,
-    },
-    gps: {
-      coordinates: {
-        type: [Number], // [lng, lat]
-        required: true,
-      },
-    },
-    note: {
-      type: String,
-    },
+export const Evidence = createModel<IEvidence>({
+  name: 'Evidence',
+  table: 'evidence',
+  dates: ['createdAt', 'updatedAt', 'timestamp'],
+  populate: {
+    delivery: { modelName: 'Delivery', key: 'delivery' },
   },
-  {
-    timestamps: true,
-  }
-);
-
-export const Evidence = model<IEvidence>('Evidence', evidenceSchema);
+});

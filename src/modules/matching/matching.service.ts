@@ -95,7 +95,9 @@ export const findMatchesForPackage = async (pkg: IPackage): Promise<IMatch[]> =>
       { upsert: true, new: true }
     );
 
-    matches.push(match);
+    if (match) {
+      matches.push(match);
+    }
   }
 
   // Sort matches by score descending
