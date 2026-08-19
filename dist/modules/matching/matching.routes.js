@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const matching_controller_1 = require("./matching.controller");
+const auth_1 = require("../../middleware/auth");
+const router = (0, express_1.Router)();
+router.get('/package/:packageId/on-demand', auth_1.protect, matching_controller_1.getOnDemandMatches);
+router.get('/package/:packageId', auth_1.protect, matching_controller_1.getMatchesByPackage);
+router.get('/journey/:journeyId', auth_1.protect, matching_controller_1.getMatchesByJourney);
+router.post('/:id/accept', auth_1.protect, (0, auth_1.restrictTo)('TRAVELER'), matching_controller_1.acceptMatch);
+exports.default = router;
