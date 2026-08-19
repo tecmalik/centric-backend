@@ -1,19 +1,32 @@
 import request from 'supertest';
-import mongoose from 'mongoose';
 import app from './app';
+import { User } from './modules/users/user.model';
+import { TravelerProfile } from './modules/users/traveler.model';
+import { Journey } from './modules/journeys/journey.model';
+import { Package } from './modules/packages/package.model';
+import { Match } from './modules/matching/match.model';
+import { Delivery } from './modules/deliveries/delivery.model';
+import { Earning } from './modules/earnings/earning.model';
+import { Evidence } from './modules/evidence/evidence.model';
+import { Verification } from './modules/verification/verification.model';
+import { TrustScoreLog } from './modules/trust/trust.model';
 
 const runDemoFlow = async () => {
   console.log('\n=== Starting Centric MVP End-to-End Demo Flow Simulation ===\n');
 
   try {
-    // 1. Connect mongoose to local test db first to ensure it's loaded
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/centric_mvp';
-    await mongoose.connect(mongoUri);
-    console.log(`[Database] Connected to ${mongoUri}`);
-
-    // Clean databases first for a fresh demo run
-    await mongoose.connection.db?.dropDatabase();
-    console.log(`[Database] Cleaned database for fresh demo run.\n`);
+    // Clean tables first for a fresh demo run
+    await Delivery.deleteMany({});
+    await Match.deleteMany({});
+    await Package.deleteMany({});
+    await Journey.deleteMany({});
+    await Earning.deleteMany({});
+    await Evidence.deleteMany({});
+    await Verification.deleteMany({});
+    await TrustScoreLog.deleteMany({});
+    await TravelerProfile.deleteMany({});
+    await User.deleteMany({});
+    console.log(`[Database] Cleaned tables for fresh demo run.\n`);
 
     const timestamp = Date.now();
 
@@ -268,8 +281,6 @@ const runDemoFlow = async () => {
     console.error('\n❌ DEMO SIMULATION FAILED AT STEP:');
     console.error(error.message || error);
     console.log('');
-  } finally {
-    await mongoose.connection.close();
   }
 };
 

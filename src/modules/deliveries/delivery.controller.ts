@@ -226,8 +226,8 @@ export const verifyOtp = async (req: Request, res: Response, next: NextFunction)
     }
 
     const delivery = await Delivery.findById(req.params.id)
-      .populate<{ package: typeof Package.prototype }>('package')
-      .populate<{ journey: typeof Journey.prototype }>('journey');
+      .populate('package')
+      .populate('journey');
 
     if (!delivery) {
       const error: AppError = new Error('Delivery not found');

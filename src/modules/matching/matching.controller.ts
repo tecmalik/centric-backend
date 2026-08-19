@@ -75,8 +75,8 @@ export const acceptMatch = async (req: Request, res: Response, next: NextFunctio
     }
 
     const match = await Match.findById(req.params.id)
-      .populate<{ package: typeof Package.prototype }>('package')
-      .populate<{ journey: typeof Journey.prototype }>('journey');
+      .populate('package')
+      .populate('journey');
 
     if (!match) {
       const error: AppError = new Error('Match record not found');

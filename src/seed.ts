@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import mongoose from 'mongoose';
 import { User } from './modules/users/user.model';
 import { TravelerProfile } from './modules/users/traveler.model';
 import { Journey } from './modules/journeys/journey.model';
@@ -15,11 +14,7 @@ import { TrustScoreLog } from './modules/trust/trust.model';
 
 const seedDatabase = async () => {
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/centric_mvp';
-    console.log(`Connecting to database for seeding: ${mongoUri}`);
-    await mongoose.connect(mongoUri);
-
-    console.log('Clearing database collection data...');
+    console.log('Clearing database tables...');
     await User.deleteMany({});
     await TravelerProfile.deleteMany({});
     await Journey.deleteMany({});
@@ -54,7 +49,7 @@ const seedDatabase = async () => {
     console.log(`Traveler seeded: ${traveler.email}`);
 
     // 3. Setup Traveler profile and mock verify
-    const travelerProfile = await TravelerProfile.create({
+    await TravelerProfile.create({
       user: traveler._id,
       isVerified: true,
       trustScore: 70, // starts at 50 + 20 for verification

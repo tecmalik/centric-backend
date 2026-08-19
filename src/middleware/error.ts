@@ -19,8 +19,8 @@ export const errorHandler = (
     console.error(`[Error Details]`, err.errors);
   }
 
-  // Handle Mongoose duplicate key error
-  if (err.name === 'MongoServerError' && (err as any).code === 11000) {
+  // Handle Postgres/PostgREST errors surfaced through the data layer
+  if (err.statusCode === 400 && (err.message === 'Duplicate field value entered')) {
     return res.status(400).json({
       success: false,
       message: 'Duplicate field value entered',

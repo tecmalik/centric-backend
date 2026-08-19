@@ -1,7 +1,7 @@
 import { Journey } from '../journeys/journey.model';
-import { IPackage } from '../packages/package.model';
 import { TravelerProfile } from '../users/traveler.model';
-import { Match, IMatch } from './match.model';
+import { Match } from './match.model';
+import { Doc } from '../../db/model';
 
 // Haversine distance in km
 export const calculateDistance = (coord1: [number, number], coord2: [number, number]): number => {
@@ -20,14 +20,14 @@ export const calculateDistance = (coord1: [number, number], coord2: [number, num
   return R * c;
 };
 
-export const findMatchesForPackage = async (pkg: IPackage): Promise<IMatch[]> => {
+export const findMatchesForPackage = async (pkg: Record<string, any>): Promise<Doc[]> => {
   // Find all active traveler journeys
   const journeys = await Journey.find({
     status: 'CREATED',
     departureTime: { $gte: new Date() }, // Active future journeys
   });
 
-  const matches: IMatch[] = [];
+  const matches: Doc[] = [];
 
   for (const journey of journeys) {
     // 1. Capacity check
@@ -95,7 +95,9 @@ export const findMatchesForPackage = async (pkg: IPackage): Promise<IMatch[]> =>
       { upsert: true, new: true }
     );
 
-    matches.push(match);
+    if (match) {
+      matches.push(match);
+    }
   }
 
   // Sort matches by score descending

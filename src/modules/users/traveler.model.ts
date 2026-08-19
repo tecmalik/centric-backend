@@ -1,7 +1,7 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface ITravelerProfile extends Document {
-  user: Types.ObjectId;
+export interface ITravelerProfile {
+  user: string;
   isVerified: boolean;
   verificationDetails?: {
     documentType?: string;
@@ -14,37 +14,7 @@ export interface ITravelerProfile extends Document {
   updatedAt: Date;
 }
 
-const travelerProfileSchema = new Schema<ITravelerProfile>(
-  {
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      unique: true,
-    },
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
-    verificationDetails: {
-      documentType: String,
-      documentNumber: String,
-      verifiedAt: Date,
-    },
-    trustScore: {
-      type: Number,
-      default: 50,
-      min: 0,
-      max: 100,
-    },
-    completedDeliveries: {
-      type: Number,
-      default: 0,
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
-
-export const TravelerProfile = model<ITravelerProfile>('TravelerProfile', travelerProfileSchema);
+export const TravelerProfile = createModel({
+  table: 'traveler_profiles',
+  dates: ['createdAt', 'updatedAt'],
+});

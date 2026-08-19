@@ -1,13 +1,20 @@
-import mongoose from 'mongoose';
+import { supabase } from './supabase';
 
 export const connectDB = async (): Promise<void> => {
+  const url = process.env.SUPABASE_URL || 'https://gjavcmvnrckfhxesawas.supabase.co';
+  console.log(`Connecting to Supabase at: ${url}`);
   try {
-    const connUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/centric_mvp';
-    console.log(`Connecting to MongoDB at: ${connUri}`);
-    await mongoose.connect(connUri);
-    console.log('MongoDB connected successfully.');
+    const { error } = await supabase.from('users').select('id').limit(1);
+    if (error && error.code === 'PGRST106') {
+      console.warn(
+        '[DB WARNING] Supabase tables not found. Run supabase/migrations/0001_init.sql in the Supabase SQL editor first.'
+      );
+    } else if (error) {
+      console.warn('[DB WARNING] Supabase reachable but returned:', error.message);
+    } else {
+      console.log('Supabase connected successfully.');
+    }
   } catch (error) {
-    console.error('MongoDB connection error:', error);
-    process.exit(1);
+    console.error('Supabase connection error:', error);
   }
 };

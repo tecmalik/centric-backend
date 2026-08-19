@@ -1,7 +1,7 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { createModel } from '../../db/model';
 
-export interface IEvidence extends Document {
-  delivery: Types.ObjectId;
+export interface IEvidence {
+  delivery: string;
   photoUrl: string;
   timestamp: Date;
   gps: {
@@ -12,34 +12,7 @@ export interface IEvidence extends Document {
   updatedAt: Date;
 }
 
-const evidenceSchema = new Schema<IEvidence>(
-  {
-    delivery: {
-      type: Schema.Types.ObjectId,
-      ref: 'Delivery',
-      required: true,
-    },
-    photoUrl: {
-      type: String,
-      required: true,
-    },
-    timestamp: {
-      type: Date,
-      default: Date.now,
-    },
-    gps: {
-      coordinates: {
-        type: [Number], // [lng, lat]
-        required: true,
-      },
-    },
-    note: {
-      type: String,
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
-
-export const Evidence = model<IEvidence>('Evidence', evidenceSchema);
+export const Evidence = createModel({
+  table: 'evidence',
+  dates: ['timestamp', 'createdAt', 'updatedAt'],
+});

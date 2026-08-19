@@ -1,0 +1,351 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Centric Backend MVP API Documentation",
+        "description": "API documentation for Centric (Hackaholics 7.0 MVP) - a crowd-sourced logistics and smart package matching platform.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:3000/api/v1",
+            "description": "Local Development Server"
+        }
+    ],
+    "components": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    },
+    "security": [
+        {
+            "BearerAuth": []
+        }
+    ],
+    "paths": {
+        "/auth/register": {
+            "post": {
+                "tags": ["Authentication"],
+                "summary": "Register a new user",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name", "email", "password", "role", "phone"],
+                                "properties": {
+                                    "name": { "type": "string", "example": "John Doe" },
+                                    "email": { "type": "string", "format": "email", "example": "johndoe@example.com" },
+                                    "password": { "type": "string", "minLength": 6, "example": "password123" },
+                                    "role": { "type": "string", "enum": ["SENDER", "TRAVELER"], "example": "TRAVELER" },
+                                    "phone": { "type": "string", "example": "+2348012345678" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": { "description": "User created successfully" },
+                    "400": { "description": "Invalid input or user already exists" }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "tags": ["Authentication"],
+                "summary": "User login",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["email", "password"],
+                                "properties": {
+                                    "email": { "type": "string", "format": "email", "example": "johndoe@example.com" },
+                                    "password": { "type": "string", "example": "password123" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Authentication successful" },
+                    "401": { "description": "Incorrect email or password" }
+                }
+            }
+        },
+        "/verification/verify": {
+            "post": {
+                "tags": ["Verification"],
+                "summary": "Mock verification for travelers",
+                "description": "Verifies traveler status, increments trust score by +20, and creates logs.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["documentType", "documentNumber"],
+                                "properties": {
+                                    "documentType": { "type": "string", "example": "National ID" },
+                                    "documentNumber": { "type": "string", "example": "NIN-12345678" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Verification completed successfully" },
+                    "403": { "description": "Only travelers can request verification" }
+                }
+            }
+        },
+        "/journeys": {
+            "post": {
+                "tags": ["Journeys"],
+                "summary": "Create a new journey",
+                "description": "Requires verified Traveler role.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["origin", "destination", "departureTime", "availableCapacity"],
+                                "properties": {
+                                    "origin": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string", "example": "Yaba" },
+                                            "coordinates": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2, "example": [3.3792, 6.5095] }
+                                        }
+                                    },
+                                    "destination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string", "example": "Ikeja" },
+                                            "coordinates": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2, "example": [3.3505, 6.6018] }
+                                        }
+                                    },
+                                    "departureTime": { "type": "string", "format": "date-time", "example": "2026-08-20T10:00:00Z" },
+                                    "availableCapacity": { "type": "number", "example": 15 }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": { "description": "Journey created successfully" },
+                    "403": { "description": "Profile must be verified" }
+                }
+            },
+            "get": {
+                "tags": ["Journeys"],
+                "summary": "Retrieve all journeys",
+                "responses": {
+                    "200": { "description": "List of journeys" }
+                }
+            }
+        },
+        "/packages": {
+            "post": {
+                "tags": ["Packages"],
+                "summary": "Create a package & trigger matching",
+                "description": "Requires Sender role. Automatically returns ranked matches.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["pickupLocation", "destination", "description", "category", "weight", "declaredValue", "recipient"],
+                                "properties": {
+                                    "pickupLocation": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string", "example": "Yaba" },
+                                            "coordinates": { "type": "array", "items": { "type": "number" }, "minItems": 2, "example": [3.3792, 6.5095] }
+                                        }
+                                    },
+                                    "destination": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string", "example": "Ikeja" },
+                                            "coordinates": { "type": "array", "items": { "type": "number" }, "minItems": 2, "example": [3.3505, 6.6018] }
+                                        }
+                                    },
+                                    "description": { "type": "string", "example": "A sealed box containing a pair of shoes" },
+                                    "category": { "type": "string", "example": "CLOTHING" },
+                                    "weight": { "type": "number", "example": 2.5 },
+                                    "declaredValue": { "type": "number", "example": 25000 },
+                                    "recipient": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string", "example": "Jane Doe" },
+                                            "phone": { "type": "string", "example": "+2348098765432" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": { "description": "Package created and matching results calculated" }
+                }
+            }
+        },
+        "/matches/{id}/accept": {
+            "post": {
+                "tags": ["Matches"],
+                "summary": "Accept a match (assigned delivery)",
+                "description": "Requires Traveler role. Accepts matching package and creates a Delivery record in ASSIGNED state.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string" }
+                    }
+                ],
+                "responses": {
+                    "200": { "description": "Match accepted successfully" },
+                    "400": { "description": "Package already matched or invalid state" }
+                }
+            }
+        },
+        "/deliveries/{id}/pickup": {
+            "post": {
+                "tags": ["Deliveries"],
+                "summary": "Submit pickup evidence and mark as PICKED_UP",
+                "description": "Requires Traveler role.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string" }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["photoUrl", "coordinates"],
+                                "properties": {
+                                    "photoUrl": { "type": "string", "example": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d" },
+                                    "coordinates": { "type": "array", "items": { "type": "number" }, "minItems": 2, "example": [3.3792, 6.5095] },
+                                    "note": { "type": "string", "example": "Package picked up in good condition" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Pickup proof saved successfully" }
+                }
+            }
+        },
+        "/deliveries/{id}/transit": {
+            "post": {
+                "tags": ["Deliveries"],
+                "summary": "Mark delivery as IN_TRANSIT",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": {
+                    "200": { "description": "Status changed to IN_TRANSIT" }
+                }
+            }
+        },
+        "/deliveries/{id}/out-for-delivery": {
+            "post": {
+                "tags": ["Deliveries"],
+                "summary": "Mark delivery as OUT_FOR_DELIVERY",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": {
+                    "200": { "description": "Status changed to OUT_FOR_DELIVERY" }
+                }
+            }
+        },
+        "/deliveries/{id}/verify-otp": {
+            "post": {
+                "tags": ["Deliveries"],
+                "summary": "Verify OTP to complete delivery",
+                "description": "Verifying correct OTP transitions status to COMPLETED, pays out traveler (earnings record), and adds +10 to traveler trust score.",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["otp"],
+                                "properties": {
+                                    "otp": { "type": "string", "example": "123456" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "OTP match succeeded. Delivery COMPLETED." }
+                }
+            }
+        },
+        "/earnings": {
+            "get": {
+                "tags": ["Earnings"],
+                "summary": "Get traveler earnings stats",
+                "responses": {
+                    "200": { "description": "Total payout stats and lists" }
+                }
+            }
+        },
+        "/trust/history": {
+            "get": {
+                "tags": ["Trust Score"],
+                "summary": "Get trust score modifications history logs",
+                "responses": {
+                    "200": { "description": "Audit trail log lists" }
+                }
+            }
+        },
+        "/ai/classify": {
+            "post": {
+                "tags": ["AI"],
+                "summary": "Demonstrate AI package classification",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["description"],
+                                "properties": {
+                                    "description": { "type": "string", "example": "A sealed box containing a pair of shoes" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Returns AI classified category, riskLevel, and confidence score" }
+                }
+            }
+        }
+    }
+}
