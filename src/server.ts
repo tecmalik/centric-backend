@@ -29,10 +29,11 @@ const startServer = async () => {
 
   // Listen
   server.listen(PORT, () => {
+    const publicUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
     console.log(`=========================================`);
     console.log(`  Centric Backend MVP Server Running     `);
     console.log(`  Local URL: http://localhost:${PORT}     `);
-    console.log(`  Swagger UI: http://localhost:${PORT}/api-docs `);
+    console.log(`  Swagger UI: ${publicUrl}/api-docs `);
     console.log(`  Environment: ${process.env.NODE_ENV}   `);
     console.log(`=========================================`);
   });

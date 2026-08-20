@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SENDER
+  TRAVELER
+}
+
+enum JourneyStatus {
+  CREATED
+  MATCHED
+  COMPLETED
+  CANCELLED
+}
+
+enum PackageStatus {
+  CREATED
+  MATCHED
+  ACCEPTED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum MatchStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum DeliveryStatus {
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum EarningStatus {
+  PENDING
+  PAID
+}
+
+model User {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  email            String             @unique
+  password         String
+  role             UserRole
+  phone            String
+  createdAt        DateTime           @default(now()) @map("createdAt")
+  updatedAt        DateTime           @updatedAt @map("updatedAt")
+  travelerProfile  TravelerProfile?
+  journeys         Journey[]
+  packages         Package[]
+  deliveriesBy     Delivery[]         @relation("DeliveryTraveler")
+  deliveriesTo     Delivery[]         @relation("DeliverySender")
+  verifications    Verification[]
+  earnings         Earning[]
+  trustScoreLogs   TrustScoreLog[]
+
+  @@map("users")
+}
+
+model TravelerProfile {
+  id                   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user                 String     @unique @db.Uuid
+  isVerified           Boolean    @default(false) @map("isVerified")
+  verificationDetails  Json?      @map("verificationDetails")
+  trustScore           Decimal    @default(50) @map("trustScore")
+  completedDeliveries  Int        @default(0) @map("completedDeliveries")
+  createdAt            DateTime   @default(now()) @map("createdAt")
+  updatedAt            DateTime   @updatedAt @map("updatedAt")
+  userUser             User       @relation(fields: [user], references: [id], onDelete: Cascade)
+
+  @@map("traveler_profiles")
+}
+
+model Journey {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user               String         @db.Uuid
+  origin             Json
+  destination        Json
+  departureTime      DateTime       @map("departureTime")
+  availableCapacity  Decimal        @map("availableCapacity")
+  status             JourneyStatus  @default(CREATED)
+  createdAt          DateTime       @default(now()) @map("createdAt")
+  updatedAt          DateTime       @updatedAt @map("updatedAt")
+  userUser           User           @relation(fields: [user], references: [id], onDelete: Cascade)
+  matches            Match[]
+  deliveries         Delivery[]
+
+  @@index([user], map: "journeys_user_idx")
+  @@map("journeys")
+}
+
+model Package {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user            String         @db.Uuid
+  pickupLocation  Json           @map("pickupLocation")
+  destination     Json
+  description     String
+  category        String
+  weight          Decimal
+  declaredValue   Decimal        @map("declaredValue")
+  recipient       Json
+  status          PackageStatus  @default(CREATED)
+  createdAt       DateTime       @default(now()) @map("createdAt")
+  updatedAt       DateTime       @updatedAt @map("updatedAt")
+  userUser        User           @relation(fields: [user], references: [id], onDelete: Cascade)
+  matches         Match[]
+  deliveries      Delivery[]
+
+  @@index([user], map: "packages_user_idx")
+  @@map("packages")
+}
+
+model Match {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  package         String      @db.Uuid
+  journey         String      @db.Uuid
+  matchScore      Decimal     @map("matchScore")
+  estimatedDetour Decimal     @map("estimatedDetour")
+  status          MatchStatus @default(PENDING)
+  createdAt       DateTime    @default(now()) @map("createdAt")
+  updatedAt       DateTime    @updatedAt @map("updatedAt")
+  packagePackage  Package     @relation(fields: [package], references: [id], onDelete: Cascade)
+  journeyJourney  Journey     @relation(fields: [journey], references: [id], onDelete: Cascade)
+
+  @@unique([package, journey])
+  @@map("matches")
+}
+
+model Delivery {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  package          String         @unique @db.Uuid
+  journey          String         @db.Uuid
+  traveler         String         @db.Uuid
+  sender           String         @db.Uuid
+  status           DeliveryStatus @default(ASSIGNED)
+  otp              String
+  otpExpiresAt     DateTime       @map("otpExpiresAt")
+  otpFailedAttempts Int           @default(0) @map("otpFailedAttempts")
+  pickupEvidence   Json?          @map("pickupEvidence")
+  createdAt        DateTime       @default(now()) @map("createdAt")
+  updatedAt        DateTime       @updatedAt @map("updatedAt")
+  packagePackage   Package        @relation(fields: [package], references: [id], onDelete: Cascade)
+  journeyJourney   Journey        @relation(fields: [journey], references: [id], onDelete: Cascade)
+  travelerUser     User           @relation("DeliveryTraveler", fields: [traveler], references: [id], onDelete: Cascade)
+  senderUser       User           @relation("DeliverySender", fields: [sender], references: [id], onDelete: Cascade)
+  evidence         Evidence[]
+  earnings         Earning[]
+
+  @@index([journey], map: "deliveries_journey_idx")
+  @@index([traveler], map: "deliveries_traveler_idx")
+  @@index([sender], map: "deliveries_sender_idx")
+  @@map("deliveries")
+}
+
+model Evidence {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  delivery   String   @db.Uuid
+  photoUrl   String   @map("photoUrl")
+  timestamp  DateTime @default(now())
+  gps        Json
+  note       String?
+  createdAt  DateTime @default(now()) @map("createdAt")
+  updatedAt  DateTime @updatedAt @map("updatedAt")
+  deliveryDelivery Delivery @relation(fields: [delivery], references: [id], onDelete: Cascade)
+
+  @@index([delivery], map: "evidence_delivery_idx")
+  @@map("evidence")
+}
+
+model Verification {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user           String             @unique @db.Uuid
+  status         VerificationStatus @default(PENDING)
+  documentType   String             @map("documentType")
+  documentNumber String             @map("documentNumber")
+  verifiedAt     DateTime?          @map("verifiedAt")
+  createdAt      DateTime           @default(now()) @map("createdAt")
+  updatedAt      DateTime           @updatedAt @map("updatedAt")
+  userUser       User               @relation(fields: [user], references: [id], onDelete: Cascade)
+
+  @@map("verifications")
+}
+
+model Earning {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  traveler    String        @db.Uuid
+  delivery    String        @db.Uuid
+  amount      Decimal
+  platformFee Decimal       @map("platformFee")
+  payoutAmount Decimal      @map("payoutAmount")
+  status      EarningStatus @default(PENDING)
+  createdAt   DateTime      @default(now()) @map("createdAt")
+  updatedAt   DateTime      @updatedAt @map("updatedAt")
+  travelerUser User         @relation(fields: [traveler], references: [id], onDelete: Cascade)
+  deliveryDelivery Delivery @relation(fields: [delivery], references: [id], onDelete: Cascade)
+
+  @@index([traveler], map: "earnings_traveler_idx")
+  @@index([delivery], map: "earnings_delivery_idx")
+  @@map("earnings")
+}
+
+model TrustScoreLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  traveler  String   @db.Uuid
+  score     Decimal
+  delta     Decimal
+  reason    String
+  createdAt DateTime @default(now()) @map("createdAt")
+  updatedAt DateTime @updatedAt @map("updatedAt")
+  travelerUser User  @relation(fields: [traveler], references: [id], onDelete: Cascade)
+
+  @@index([traveler], map: "trust_score_logs_traveler_idx")
+  @@map("trust_score_logs")
+}

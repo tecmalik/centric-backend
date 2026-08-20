@@ -7,6 +7,7 @@ Centric Backend MVP for Hackaholics 7.0 — a peer-to-peer luggage delivery plat
 - **Node.js / Express** — REST API
 - **TypeScript** — typed throughout
 - **Supabase (PostgreSQL)** — database, accessed via the Supabase REST API (`@supabase/supabase-js`)
+- **Prisma ORM** — schema source of truth + migrations synced to Supabase (`prisma/`)
 - **Socket.IO** — real-time delivery event updates
 - **JWT** — authentication (HS256, signed with `JWT_SECRET`)
 - **Swagger UI** — interactive API docs at `/api-docs`
@@ -38,11 +39,28 @@ SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_PUBLISHABLE_KEY=<your-publishable-key>
 JWT_SECRET=super_secret_jwt_key_change_me_in_production
 JWT_EXPIRES_IN=30d
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-<n>-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
+
+`DATABASE_URL` is the Supabase **Session Pooler** connection string (Supabase Dashboard → Project Settings → Database → Connection string → Pooler). Use the **session** (port `5432`) variant for Prisma migrations; the direct `db.<ref>.supabase.co` host is IPv6-only.
 
 ### 3. Create the database schema
 
-Open your Supabase project → **SQL Editor**, paste the contents of `supabase/migrations/0001_init.sql`, and run it. This creates all 10 tables (`users`, `traveler_profiles`, `journeys`, `packages`, `matches`, `deliveries`, `evidence`, `verifications`, `earnings`, `trust_score_logs`) with UUID primary keys, foreign keys with `ON DELETE CASCADE`, and status check constraints.
+**Option A (recommended) — via Prisma:** Prisma is the schema source of truth (`prisma/schema.prisma`). To apply schema changes to Supabase:
+
+```bash
+npm run db:generate   # regenerate the Prisma Client from the schema
+npm run db:migrate    # create + apply a new migration (add --name <name> for the first one)
+npm run db:deploy     # apply pending migrations (CI / production)
+npm run db:push       # push schema changes without a migration history
+npm run db:studio     # visual database browser
+```
+
+The initial migration (`prisma/migrations/0_init`) mirrors `supabase/migrations/0001_init.sql` and is already marked as applied on the existing database.
+
+**Option B — manual SQL:** Open your Supabase project → **SQL Editor**, paste the contents of `supabase/migrations/0001_init.sql`, and run it. This creates all 10 tables (`users`, `traveler_profiles`, `journeys`, `packages`, `matches`, `deliveries`, `evidence`, `verifications`, `earnings`, `trust_score_logs`) with UUID primary keys, foreign keys with `ON DELETE CASCADE`, and status check constraints.
+
+> **Workflow for schema changes:** edit `prisma/schema.prisma` → run `npm run db:migrate -- --name describe_change` → Prisma generates the SQL diff and applies it directly to your Supabase database. Re-run `npm run db:generate` if you use the generated client.
 
 ### 4. Seed demo data (optional)
 
